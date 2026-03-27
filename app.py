@@ -117,8 +117,11 @@ def calc_property_metrics(prop):
         cat = e.get('category', 'Other')
         rehab_by_category[cat] = rehab_by_category.get(cat, 0) + e.get('amount', 0)
 
-    # Budget tracking
-    budget = prop.get('rehab_budget', 0) or 0
+    # Budget tracking — actual budget vs lender budget
+    budget = prop.get('rehab_budget', 0) or 0  # what you expect to actually spend
+    lender_budget = prop.get('lender_rehab_budget', 0) or 0  # what the lender approved for draws
+    if lender_budget == 0:
+        lender_budget = budget  # fallback: if no lender budget set, treat same as actual
     budget_variance = ((total_rehab - budget) / budget * 100) if budget > 0 else 0
     budget_remaining = budget - total_rehab
     contingency_amount = budget * (contingency_pct / 100) if budget > 0 else total_rehab * (contingency_pct / 100)
@@ -126,6 +129,12 @@ def calc_property_metrics(prop):
     # ---- Draws ----
     total_draws = sum(d.get('amount', 0) for d in draws)
     draw_credit = total_draws - total_rehab
+
+    # Capital recapture: difference between lender budget and actual spend
+    lender_budget_spread = lender_budget - budget  # planned capital recapture
+    actual_capital_recapture = lender_budget - total_rehab  # actual capital recapture so far
+    lender_budget_remaining = lender_budget - total_draws  # how much more draw capacity left
+    draw_utilization = (total_draws / lender_budget * 100) if lender_budget > 0 else 0
 
     # ---- Holding costs ----
     total_mortgage_payments = sum(m.get('amount', 0) for m in mortgage_payments)
@@ -243,6 +252,11 @@ def calc_property_metrics(prop):
         'effective_sale': effective_sale, 'sqft': sqft, 'status': status,
         'total_rehab': total_rehab, 'net_rehab': total_rehab,
         'rehab_by_category': rehab_by_category, 'budget': budget,
+        'lender_budget': lender_budget,
+        'lender_budget_spread': lender_budget_spread,
+        'actual_capital_recapture': actual_capital_recapture,
+        'lender_budget_remaining': lender_budget_remaining,
+        'draw_utilization': draw_utilization,
         'budget_variance': budget_variance, 'budget_remaining': budget_remaining,
         'contingency_pct': contingency_pct, 'contingency_amount': contingency_amount,
         'total_draws': total_draws, 'draw_credit': draw_credit,

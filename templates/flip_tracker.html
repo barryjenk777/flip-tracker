@@ -739,9 +739,9 @@
             </div>
 
             <div class="two-col">
-                <!-- Budget vs Actual -->
+                <!-- Budget vs Actual + Capital Recapture -->
                 <div class="card">
-                    <div class="card-title">Budget vs Actual</div>
+                    <div class="card-title">Budget, Draws & Capital Recapture</div>
                     <div id="budget-bar"></div>
                 </div>
 
@@ -1030,7 +1030,8 @@
                 <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="ep-acqclosing" step="0.01"></div>
                 <div class="form-group"><label>Purchase Settlement (w/ down payment)</label><input type="number" id="ep-settlement" step="0.01"></div>
                 <div class="form-group"><label>EMD</label><input type="number" id="ep-emd" step="0.01"></div>
-                <div class="form-group"><label>Rehab Budget</label><input type="number" id="ep-budget" step="0.01"></div>
+                <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="ep-budget" step="0.01"></div>
+                <div class="form-group"><label>Lender Rehab Budget</label><input type="number" id="ep-lender-budget" step="0.01"></div>
                 <div class="form-group"><label>Purchase Date</label><input type="date" id="ep-purchasedate"></div>
                 <div class="form-group"><label>Est. Sale Date</label><input type="date" id="ep-estsaledate"></div>
                 <div class="form-group"><label>Listing Date</label><input type="date" id="ep-listingdate"></div>
@@ -1156,6 +1157,7 @@ function showEditProperty() {
     $('ep-settlement').value = prop.purchase_settlement || '';
     $('ep-emd').value = prop.emd || '';
     $('ep-budget').value = prop.rehab_budget || '';
+    $('ep-lender-budget').value = prop.lender_rehab_budget || '';
     $('ep-purchasedate').value = prop.purchase_date || '';
     $('ep-estsaledate').value = prop.estimated_sale_date || '';
     $('ep-listingdate').value = prop.listing_date || '';
@@ -1191,6 +1193,7 @@ async function submitEditProperty() {
         purchase_settlement: +$('ep-settlement').value || 0,
         emd: +$('ep-emd').value || 0,
         rehab_budget: +$('ep-budget').value || 0,
+        lender_rehab_budget: +$('ep-lender-budget').value || 0,
         purchase_date: $('ep-purchasedate').value || null,
         estimated_sale_date: $('ep-estsaledate').value || null,
         listing_date: $('ep-listingdate').value || null,
@@ -1729,21 +1732,66 @@ function renderBudgetBar(m) {
     }
     const pctUsed = (m.total_rehab / m.budget) * 100;
     const barColor = pctUsed > 100 ? 'var(--red)' : pctUsed > 85 ? 'var(--yellow)' : 'var(--green)';
-    const contingencyLine = 100 + m.contingency_pct;
+    const hasLender = m.lender_budget > 0 && m.lender_budget !== m.budget;
+    const lenderPctUsed = hasLender ? (m.total_draws / m.lender_budget * 100) : 0;
 
     $('budget-bar').innerHTML = `
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;margin-bottom:6px;">Actual Rehab Budget</div>
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px;">
             <span>Spent: <strong>${fmt(m.total_rehab)}</strong></span>
             <span>Budget: <strong>${fmt(m.budget)}</strong></span>
         </div>
         <div class="budget-bar-outer" style="position:relative;">
             <div class="budget-bar-fill" style="width:${Math.min(pctUsed, 120)}%;background:${barColor};color:var(--bg-primary)">${pct(pctUsed)}</div>
-            ${m.contingency_pct > 0 ? `<div class="budget-bar-marker" style="left:${Math.min(contingencyLine, 100)}%"><div class="budget-bar-marker-label">+${m.contingency_pct}% contingency</div></div>` : ''}
+            ${m.contingency_pct > 0 ? `<div class="budget-bar-marker" style="left:${Math.min(100 + m.contingency_pct, 100)}%"><div class="budget-bar-marker-label">+${m.contingency_pct}% contingency</div></div>` : ''}
         </div>
         <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--text-secondary);">
             <span>Remaining: <strong style="color:${m.budget_remaining>=0?'var(--green)':'var(--red)'}">${fmt(m.budget_remaining)}</strong></span>
             <span>Contingency: <strong>${fmt(m.contingency_amount)}</strong></span>
         </div>
+
+        ${hasLender ? `
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+            <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;margin-bottom:6px;">Lender Rehab Budget & Capital Recapture</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px;">
+                <span>Draws Taken: <strong>${fmt(m.total_draws)}</strong></span>
+                <span>Lender Budget: <strong style="color:var(--accent)">${fmt(m.lender_budget)}</strong></span>
+            </div>
+            <div class="budget-bar-outer" style="position:relative;">
+                <div class="budget-bar-fill" style="width:${Math.min(lenderPctUsed, 100)}%;background:var(--accent);color:var(--bg-primary)">${pct(lenderPctUsed)}</div>
+                <div class="budget-bar-marker" style="left:${Math.min((m.budget / m.lender_budget) * 100, 100)}%"><div class="budget-bar-marker-label">Actual budget (${fmt(m.budget)})</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+                <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Planned Recapture</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--green)">${fmt(m.lender_budget_spread)}</div>
+                    <div style="font-size:11px;color:var(--text-secondary)">Lender budget - actual budget</div>
+                </div>
+                <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Actual Recapture</div>
+                    <div style="font-size:22px;font-weight:700;color:${m.actual_capital_recapture>=0?'var(--green)':'var(--red)'}">${fmt(m.actual_capital_recapture)}</div>
+                    <div style="font-size:11px;color:var(--text-secondary)">Lender budget - actual spend</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;">
+                <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Draw Capacity Left</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--accent)">${fmt(m.lender_budget_remaining)}</div>
+                    <div style="font-size:11px;color:var(--text-secondary)">Lender budget - draws taken</div>
+                </div>
+                <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Draw Utilization</div>
+                    <div style="font-size:22px;font-weight:700;color:${m.draw_utilization>=80?'var(--green)':m.draw_utilization>=50?'var(--yellow)':'var(--accent)'}">${pct(m.draw_utilization)}</div>
+                    <div style="font-size:11px;color:var(--text-secondary)">of lender budget drawn</div>
+                </div>
+            </div>
+            <div class="insight-box" style="margin-top:12px;">
+                <strong>Strategy:</strong> Lender approved ${fmt(m.lender_budget)} for rehab, you expect to spend ${fmt(m.budget)}.
+                The ${fmt(m.lender_budget_spread)} spread can be recaptured via draws to offset closing costs and carrying costs.
+                ${m.total_draws > 0 ? `So far you've drawn ${fmt(m.total_draws)} of the ${fmt(m.lender_budget)} available.` : 'No draws taken yet.'}
+            </div>
+        </div>
+        ` : '<div style="margin-top:12px;font-size:12px;color:var(--text-muted);">Set a Lender Rehab Budget in Edit Property to track capital recapture strategy.</div>'}
     `;
 }
 
