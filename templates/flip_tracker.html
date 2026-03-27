@@ -574,10 +574,9 @@
             <h1>Flip Tracker</h1>
             <span class="subtitle">Investment Dashboard</span>
         </div>
-        <div class="header-actions">
-            <button class="btn btn-secondary" onclick="window.location='/api/export/csv'" title="Download CSV backup">&#128190; Backup CSV</button>
-            <button class="btn btn-secondary" onclick="window.location='/api/export/json'" title="Download JSON backup">&#128190; Backup JSON</button>
-            <button class="btn btn-secondary" onclick="showAddProperty()">+ Add Property</button>
+        <div class="header-actions" id="header-actions">
+            <button class="btn btn-secondary" onclick="window.location='/api/export/csv'" title="Download CSV backup">&#128190; Backup</button>
+            <button class="btn btn-secondary" id="header-ctx-btn" onclick="showAddProperty()">+ Add Property</button>
         </div>
     </div>
 
@@ -1004,6 +1003,15 @@ function switchTab(name) {
     const target = tabMap[name] || '';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent === target));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === 'tab-'+name));
+    // Context-aware header button
+    const btn = $('header-ctx-btn');
+    if (name === 'prospects') {
+        btn.textContent = '+ Analyze Deal';
+        btn.onclick = () => { $('qa-address').focus(); };
+    } else {
+        btn.textContent = '+ Add Property';
+        btn.onclick = () => showAddProperty();
+    }
 }
 
 // ---- Modals ----
