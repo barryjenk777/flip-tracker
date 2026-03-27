@@ -18,9 +18,30 @@ DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flip_data.
 _memory_store = None
 
 
+def _default_prospect_settings():
+    return {
+        'min_profit': 25000,
+        'min_roi': 15,
+        'arv_multiplier': 0.70,
+        'commission_pct': 6.0,
+        'closing_cost_pct': 3.0,
+        'monthly_holding_cost': 2500,
+        'holding_months': 6,
+        'rental_expense_ratio': 0.50,
+        'min_cashflow_per_door': 200,
+        'min_cap_rate': 5.0,
+        'min_cash_on_cash': 8.0,
+        'down_payment_pct': 20,
+        'interest_rate': 7.5,
+        'loan_term_years': 30,
+    }
+
+
 def _default_data():
     return {
         'properties': [],
+        'prospects': [],
+        'prospect_settings': _default_prospect_settings(),
         'settings': {
             'default_commission_pct': 4.0,
             'default_closing_cost_pct': 1.5,
@@ -37,6 +58,8 @@ def load_data():
     try:
         with open(DATA_FILE, 'r') as f:
             _memory_store = json.load(f)
+            _memory_store.setdefault('prospects', [])
+            _memory_store.setdefault('prospect_settings', _default_prospect_settings())
             return _memory_store
     except (FileNotFoundError, json.JSONDecodeError):
         _memory_store = _default_data()
@@ -238,6 +261,107 @@ def calc_property_metrics(prop):
         'profit_erosion_per_day': profit_erosion_per_day,
         'days_until_zero_profit': days_until_zero_profit,
         'flags': flags,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Prospect calculation engine
+# ---------------------------------------------------------------------------
+def calc_prospect_metrics(prospect, settings):
+    """Calculate flip + rental metrics for a prospect."""
+    asking = prospect.get('asking_price', 0) or 0
+    arv = prospect.get('arv', 0) or 0
+    rehab = prospect.get('estimated_rehab', 0) or 0
+    monthly_rent = prospect.get('monthly_rent_estimate', 0) or 0
+
+    mult = settings.get('arv_multiplier', 0.70)
+    comm_pct = settings.get('commission_pct', 6.0) / 100
+    close_pct = settings.get('closing_cost_pct', 3.0) / 100
+    monthly_hold = settings.get('monthly_holding_cost', 2500)
+    hold_months = settings.get('holding_months', 6)
+
+    # --- FLIP METRICS ---
+    mao_70 = (arv * 0.70) - rehab if arv else 0
+    mao_custom = (arv * mult) - rehab if arv else 0
+    spread = mao_custom - asking
+
+    commissions = arv * comm_pct
+    closing_costs_flip = (arv * close_pct) + (asking * 0.015)  # buyer + seller closing
+    holding_total = monthly_hold * hold_months
+    gross_profit = arv - asking - rehab - commissions - closing_costs_flip - holding_total
+    total_investment = asking + rehab + closing_costs_flip + holding_total
+    roi = (gross_profit / total_investment * 100) if total_investment > 0 else 0
+    profit_margin = (gross_profit / arv * 100) if arv > 0 else 0
+    total_cost_to_arv = (total_investment / arv * 100) if arv > 0 else 0
+
+    min_profit = settings.get('min_profit', 25000)
+    min_roi = settings.get('min_roi', 15)
+    flip_pass = gross_profit >= min_profit and roi >= min_roi
+    flip_borderline = (not flip_pass and gross_profit >= min_profit * 0.7
+                       and roi >= min_roi * 0.7)
+
+    # --- RENTAL METRICS ---
+    one_pct_rule = (monthly_rent / asking * 100) if asking > 0 else 0
+    one_pct_pass = one_pct_rule >= 1.0
+
+    expense_ratio = settings.get('rental_expense_ratio', 0.50)
+    annual_rent = monthly_rent * 12
+    estimated_expenses = annual_rent * expense_ratio
+    noi = annual_rent - estimated_expenses
+    cap_rate = (noi / asking * 100) if asking > 0 else 0
+    grm = (asking / annual_rent) if annual_rent > 0 else 0
+
+    # Debt service
+    down_pct = settings.get('down_payment_pct', 20) / 100
+    rate = settings.get('interest_rate', 7.5) / 100
+    term = settings.get('loan_term_years', 30)
+    loan_amount = asking * (1 - down_pct)
+    monthly_rate = rate / 12
+    if monthly_rate > 0 and term > 0:
+        n_payments = term * 12
+        monthly_payment = loan_amount * (monthly_rate * (1 + monthly_rate)**n_payments) / ((1 + monthly_rate)**n_payments - 1)
+    else:
+        monthly_payment = 0
+    annual_debt = monthly_payment * 12
+
+    monthly_cashflow = monthly_rent - (estimated_expenses / 12) - monthly_payment
+    annual_cashflow = monthly_cashflow * 12
+    cash_invested = (asking * down_pct) + (asking * close_pct)
+    cash_on_cash = (annual_cashflow / cash_invested * 100) if cash_invested > 0 else 0
+    dscr = (noi / annual_debt) if annual_debt > 0 else 0
+
+    min_cashflow = settings.get('min_cashflow_per_door', 200)
+    min_cap = settings.get('min_cap_rate', 5.0)
+    min_coc = settings.get('min_cash_on_cash', 8.0)
+    rental_pass = (cap_rate >= min_cap and cash_on_cash >= min_coc
+                   and monthly_cashflow >= min_cashflow)
+    rental_borderline = (not rental_pass and cap_rate >= min_cap * 0.7
+                         and monthly_cashflow >= min_cashflow * 0.5)
+
+    return {
+        # Flip
+        'mao_70': round(mao_70, 0), 'mao_custom': round(mao_custom, 0),
+        'spread': round(spread, 0), 'gross_profit': round(gross_profit, 0),
+        'roi': round(roi, 1), 'profit_margin': round(profit_margin, 1),
+        'holding_total': round(holding_total, 0),
+        'commissions': round(commissions, 0),
+        'closing_costs_flip': round(closing_costs_flip, 0),
+        'total_cost_to_arv': round(total_cost_to_arv, 1),
+        'flip_pass': flip_pass, 'flip_borderline': flip_borderline,
+        'flip_verdict': 'PASS' if flip_pass else ('BORDERLINE' if flip_borderline else 'FAIL'),
+        # Rental
+        'one_pct_rule': round(one_pct_rule, 2), 'one_pct_pass': one_pct_pass,
+        'cap_rate': round(cap_rate, 2), 'cash_on_cash': round(cash_on_cash, 2),
+        'dscr': round(dscr, 2), 'grm': round(grm, 1),
+        'monthly_cashflow': round(monthly_cashflow, 0),
+        'annual_cashflow': round(annual_cashflow, 0),
+        'noi': round(noi, 0), 'monthly_payment': round(monthly_payment, 0),
+        'loan_amount': round(loan_amount, 0), 'cash_invested': round(cash_invested, 0),
+        'rental_pass': rental_pass, 'rental_borderline': rental_borderline,
+        'rental_verdict': 'PASS' if rental_pass else ('BORDERLINE' if rental_borderline else 'FAIL'),
+        # Thresholds used (for display)
+        'min_profit': min_profit, 'min_roi': min_roi,
+        'arv_multiplier': mult,
     }
 
 
@@ -539,6 +663,149 @@ def update_flip_settings():
     data['settings'] = request.json
     save_data(data)
     return jsonify(data['settings'])
+
+
+# ---------------------------------------------------------------------------
+# Prospect / Deal Analyzer routes
+# ---------------------------------------------------------------------------
+PROSPECT_STAGES = ['new_lead', 'analyzing', 'offer_sent', 'under_contract', 'passed', 'converted']
+
+
+@app.route('/api/prospects', methods=['GET'])
+def get_prospects():
+    data = load_data()
+    settings = data.get('prospect_settings', _default_prospect_settings())
+    result = []
+    for p in data.get('prospects', []):
+        metrics = calc_prospect_metrics(p, settings)
+        result.append({**p, 'metrics': metrics})
+    return jsonify({'prospects': result, 'settings': settings})
+
+
+@app.route('/api/prospects', methods=['POST'])
+def add_prospect():
+    data = load_data()
+    p = request.json
+    if not p.get('id'):
+        slug = (p.get('address', 'prospect') or 'prospect').lower().replace(' ', '-')[:30]
+        p['id'] = slug + '-' + datetime.now().strftime('%Y%m%d%H%M%S')
+    p.setdefault('stage', 'new_lead')
+    p.setdefault('date_added', datetime.now().strftime('%Y-%m-%d'))
+    p.setdefault('verdict', None)
+    p.setdefault('notes', '')
+    p.setdefault('source', '')
+    p.setdefault('beds', 0)
+    p.setdefault('baths', 0)
+    p.setdefault('sqft', 0)
+    p.setdefault('year_built', 0)
+    p.setdefault('monthly_rent_estimate', 0)
+    data.setdefault('prospects', []).append(p)
+    save_data(data)
+    settings = data.get('prospect_settings', _default_prospect_settings())
+    metrics = calc_prospect_metrics(p, settings)
+    return jsonify({**p, 'metrics': metrics})
+
+
+@app.route('/api/prospects/<prospect_id>', methods=['PUT'])
+def update_prospect(prospect_id):
+    data = load_data()
+    for i, p in enumerate(data.get('prospects', [])):
+        if p.get('id') == prospect_id:
+            data['prospects'][i].update(request.json)
+            save_data(data)
+            settings = data.get('prospect_settings', _default_prospect_settings())
+            metrics = calc_prospect_metrics(data['prospects'][i], settings)
+            return jsonify({**data['prospects'][i], 'metrics': metrics})
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/api/prospects/<prospect_id>', methods=['DELETE'])
+def delete_prospect(prospect_id):
+    data = load_data()
+    data['prospects'] = [p for p in data.get('prospects', []) if p.get('id') != prospect_id]
+    save_data(data)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/prospects/<prospect_id>/stage', methods=['PUT'])
+def update_prospect_stage(prospect_id):
+    data = load_data()
+    stage = request.json.get('stage')
+    if stage not in PROSPECT_STAGES:
+        return jsonify({'error': f'Invalid stage. Must be one of: {PROSPECT_STAGES}'}), 400
+    for i, p in enumerate(data.get('prospects', [])):
+        if p.get('id') == prospect_id:
+            data['prospects'][i]['stage'] = stage
+            save_data(data)
+            return jsonify(data['prospects'][i])
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/api/prospects/settings', methods=['GET'])
+def get_prospect_settings():
+    data = load_data()
+    return jsonify(data.get('prospect_settings', _default_prospect_settings()))
+
+
+@app.route('/api/prospects/settings', methods=['POST'])
+def update_prospect_settings():
+    data = load_data()
+    data['prospect_settings'] = request.json
+    save_data(data)
+    return jsonify(data['prospect_settings'])
+
+
+@app.route('/api/prospects/<prospect_id>/convert', methods=['POST'])
+def convert_prospect(prospect_id):
+    data = load_data()
+    prospect = None
+    for i, p in enumerate(data.get('prospects', [])):
+        if p.get('id') == prospect_id:
+            prospect = p
+            prospect_idx = i
+            break
+    if not prospect:
+        return jsonify({'error': 'Not found'}), 404
+
+    # Create new property from prospect
+    new_prop = {
+        'id': prospect['id'] + '-prop',
+        'address': prospect.get('address', ''),
+        'city': prospect.get('city', ''),
+        'state': prospect.get('state', 'VA'),
+        'zip': prospect.get('zip', ''),
+        'sqft': prospect.get('sqft', 0),
+        'purchase_price': prospect.get('asking_price', 0),
+        'arv': prospect.get('arv', 0),
+        'sale_price': 0,
+        'acq_closing_cost': 0,
+        'purchase_settlement': 0,
+        'emd': 0,
+        'appraisal_fee': 0,
+        'commitment_fee': 0,
+        'purchase_date': datetime.now().strftime('%Y-%m-%d'),
+        'estimated_sale_date': None,
+        'sale_date': None,
+        'listing_date': None,
+        'rehab_budget': prospect.get('estimated_rehab', 0),
+        'sale_commission_pct': 4.0,
+        'sale_closing_cost_pct': 1.5,
+        'contingency_pct': 15.0,
+        'partner_split_pct': 50.0,
+        'status': 'active',
+        'notes': f'Converted from prospect. Original asking: ${prospect.get("asking_price", 0):,.0f}. {prospect.get("notes", "")}',
+        'holding_costs': {
+            'monthly_mortgage': 0, 'monthly_insurance': 0, 'monthly_taxes': 0,
+            'monthly_utilities': 0, 'monthly_hoa': 0, 'monthly_lawn': 0, 'monthly_other': 0,
+        },
+        'expenses': [],
+        'draws': [],
+        'mortgage_payments': [],
+    }
+    data['properties'].append(new_prop)
+    data['prospects'][prospect_idx]['stage'] = 'converted'
+    save_data(data)
+    return jsonify({'property': new_prop, 'prospect_stage': 'converted'})
 
 
 @app.route('/api/export/csv')

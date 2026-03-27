@@ -415,5 +415,22 @@
     "default_closing_cost_pct": 1.5,
     "default_contingency_pct": 15.0,
     "partner_split_pct": 50.0
+  },
+  "prospects": [],
+  "prospect_settings": {
+    "min_profit": 25000,
+    "min_roi": 15,
+    "arv_multiplier": 0.7,
+    "commission_pct": 6.0,
+    "closing_cost_pct": 3.0,
+    "monthly_holding_cost": 2500,
+    "holding_months": 6,
+    "rental_expense_ratio": 0.5,
+    "min_cashflow_per_door": 200,
+    "min_cap_rate": 5.0,
+    "min_cash_on_cash": 8.0,
+    "down_payment_pct": 20,
+    "interest_rate": 7.5,
+    "loan_term_years": 30
   }
 }
