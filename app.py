@@ -284,39 +284,81 @@ def calc_property_metrics(prop):
 # Prospect calculation engine
 # ---------------------------------------------------------------------------
 def calc_prospect_metrics(prospect, settings):
-    """Calculate flip + rental metrics for a prospect."""
-    asking = prospect.get('asking_price', 0) or 0
+    """Calculate flip + rental metrics for a prospect.
+    Mirrors the partner's 'Profit & Loss Property Worksheet' layout/formulas.
+    """
+    # --- PROPERTY VALUE ---
+    mls_list_price = prospect.get('mls_list_price', 0) or 0
+    as_is_value = prospect.get('as_is_value', 0) or 0
     arv = prospect.get('arv', 0) or 0
+    asking = prospect.get('asking_price', 0) or 0  # = Purchase Price
+
+    # --- REHAB ---
     rehab = prospect.get('estimated_rehab', 0) or 0
-    monthly_rent = prospect.get('monthly_rent_estimate', 0) or 0
+    initial_prep = prospect.get('initial_prep', 0) or 0
+    rehab_total = rehab + initial_prep
 
+    # --- PURCHASE OFFER ASSUMPTIONS ---
+    market_value = as_is_value if as_is_value > 0 else arv
+    market_discount_pct = prospect.get('market_discount_pct', 0) or 0  # e.g. 0.40 = 40%
+    # Target purchase = market value * (1 - discount)
+    target_purchase = market_value * (1 - market_discount_pct) if market_discount_pct > 0 else asking
+    discount_from_market = ((asking - market_value) / market_value) if market_value > 0 else 0
+    discount_from_list = ((asking - mls_list_price) / mls_list_price) if mls_list_price > 0 else 0
+
+    # --- HOLDING COSTS (worksheet layout) ---
+    hold_months = prospect.get('holding_months', 0) or settings.get('holding_months', 6)
+    monthly_utilities = prospect.get('monthly_utilities', 0) or 0
+    monthly_landscape = prospect.get('monthly_landscape', 0) or 0
+    monthly_insurance = prospect.get('monthly_insurance', 0) or 0
+    monthly_taxes = prospect.get('monthly_taxes', 0) or 0
+    monthly_hard_money = prospect.get('monthly_hard_money', 0) or 0
+    monthly_hold_total = monthly_utilities + monthly_landscape + monthly_insurance + monthly_taxes + monthly_hard_money
+    holding_total = monthly_hold_total * hold_months
+    # If no detailed holding entered, fall back to settings
+    if holding_total == 0:
+        monthly_hold_total = settings.get('monthly_holding_cost', 2500)
+        holding_total = monthly_hold_total * hold_months
+
+    # --- SELLING COST DETAIL (worksheet layout) ---
+    est_sales_price = arv if arv > 0 else asking
+    settlement_pct = prospect.get('seller_settlement_pct', 0) or settings.get('closing_cost_pct', 1.5) / 100
+    if settlement_pct > 1:
+        settlement_pct = settlement_pct / 100  # handle if entered as 1.5 vs 0.015
+    seller_settlement = est_sales_price * settlement_pct
+    seller_concessions = prospect.get('seller_concessions', 0) or 0
+    commission_pct = prospect.get('commission_pct', 0) or settings.get('commission_pct', 6.0) / 100
+    if commission_pct > 1:
+        commission_pct = commission_pct / 100
+    re_commission = est_sales_price * commission_pct
+    price_reduction = prospect.get('price_reduction', 0) or 0
+    total_selling_costs = seller_settlement + seller_concessions + re_commission + price_reduction
+
+    # --- ACQ CLOSING COSTS ---
+    acq_closing = prospect.get('acq_closing_costs', 0) or 0
+
+    # --- TOTAL COST SUMMARY (matches worksheet) ---
+    total_cost = asking + acq_closing + rehab_total + holding_total + total_selling_costs
+
+    # --- PROFITABILITY ANALYSIS ---
+    gross_profit = est_sales_price - total_cost
+    cash_on_cash_roi = (gross_profit / total_cost * 100) if total_cost > 0 else 0
+    annualized_roi = cash_on_cash_roi * (12 / hold_months) if hold_months > 0 else 0
+
+    # --- MAO / 70% RULE (additional) ---
     mult = settings.get('arv_multiplier', 0.70)
-    comm_pct = settings.get('commission_pct', 6.0) / 100
-    close_pct = settings.get('closing_cost_pct', 3.0) / 100
-    monthly_hold = settings.get('monthly_holding_cost', 2500)
-    hold_months = settings.get('holding_months', 6)
-
-    # --- FLIP METRICS ---
-    mao_70 = (arv * 0.70) - rehab if arv else 0
-    mao_custom = (arv * mult) - rehab if arv else 0
+    mao_70 = (arv * 0.70) - rehab_total if arv else 0
+    mao_custom = (arv * mult) - rehab_total if arv else 0
     spread = mao_custom - asking
-
-    commissions = arv * comm_pct
-    closing_costs_flip = (arv * close_pct) + (asking * 0.015)  # buyer + seller closing
-    holding_total = monthly_hold * hold_months
-    gross_profit = arv - asking - rehab - commissions - closing_costs_flip - holding_total
-    total_investment = asking + rehab + closing_costs_flip + holding_total
-    roi = (gross_profit / total_investment * 100) if total_investment > 0 else 0
-    profit_margin = (gross_profit / arv * 100) if arv > 0 else 0
-    total_cost_to_arv = (total_investment / arv * 100) if arv > 0 else 0
 
     min_profit = settings.get('min_profit', 25000)
     min_roi = settings.get('min_roi', 15)
-    flip_pass = gross_profit >= min_profit and roi >= min_roi
+    flip_pass = gross_profit >= min_profit and cash_on_cash_roi >= min_roi
     flip_borderline = (not flip_pass and gross_profit >= min_profit * 0.7
-                       and roi >= min_roi * 0.7)
+                       and cash_on_cash_roi >= min_roi * 0.7)
 
     # --- RENTAL METRICS ---
+    monthly_rent = prospect.get('monthly_rent_estimate', 0) or 0
     one_pct_rule = (monthly_rent / asking * 100) if asking > 0 else 0
     one_pct_pass = one_pct_rule >= 1.0
 
@@ -327,7 +369,6 @@ def calc_prospect_metrics(prospect, settings):
     cap_rate = (noi / asking * 100) if asking > 0 else 0
     grm = (asking / annual_rent) if annual_rent > 0 else 0
 
-    # Debt service
     down_pct = settings.get('down_payment_pct', 20) / 100
     rate = settings.get('interest_rate', 7.5) / 100
     term = settings.get('loan_term_years', 30)
@@ -342,32 +383,60 @@ def calc_prospect_metrics(prospect, settings):
 
     monthly_cashflow = monthly_rent - (estimated_expenses / 12) - monthly_payment
     annual_cashflow = monthly_cashflow * 12
-    cash_invested = (asking * down_pct) + (asking * close_pct)
-    cash_on_cash = (annual_cashflow / cash_invested * 100) if cash_invested > 0 else 0
+    cash_invested = (asking * down_pct) + (asking * settlement_pct)
+    cash_on_cash_rental = (annual_cashflow / cash_invested * 100) if cash_invested > 0 else 0
     dscr = (noi / annual_debt) if annual_debt > 0 else 0
 
     min_cashflow = settings.get('min_cashflow_per_door', 200)
     min_cap = settings.get('min_cap_rate', 5.0)
     min_coc = settings.get('min_cash_on_cash', 8.0)
-    rental_pass = (cap_rate >= min_cap and cash_on_cash >= min_coc
+    rental_pass = (cap_rate >= min_cap and cash_on_cash_rental >= min_coc
                    and monthly_cashflow >= min_cashflow)
     rental_borderline = (not rental_pass and cap_rate >= min_cap * 0.7
                          and monthly_cashflow >= min_cashflow * 0.5)
 
     return {
-        # Flip
-        'mao_70': round(mao_70, 0), 'mao_custom': round(mao_custom, 0),
-        'spread': round(spread, 0), 'gross_profit': round(gross_profit, 0),
-        'roi': round(roi, 1), 'profit_margin': round(profit_margin, 1),
+        # Property Value
+        'mls_list_price': mls_list_price, 'as_is_value': as_is_value,
+        # Purchase Offer
+        'target_purchase': round(target_purchase, 0),
+        'discount_from_market': round(discount_from_market * 100, 1),
+        'discount_from_list': round(discount_from_list * 100, 1),
+        # Rehab
+        'rehab_total': round(rehab_total, 0), 'initial_prep': initial_prep,
+        # Holding
         'holding_total': round(holding_total, 0),
-        'commissions': round(commissions, 0),
-        'closing_costs_flip': round(closing_costs_flip, 0),
-        'total_cost_to_arv': round(total_cost_to_arv, 1),
+        'monthly_hold_total': round(monthly_hold_total, 0),
+        'monthly_utilities': monthly_utilities, 'monthly_landscape': monthly_landscape,
+        'monthly_insurance': monthly_insurance, 'monthly_taxes': monthly_taxes,
+        'monthly_hard_money': monthly_hard_money,
+        # Selling
+        'est_sales_price': round(est_sales_price, 0),
+        'seller_settlement': round(seller_settlement, 0),
+        'seller_concessions': seller_concessions,
+        're_commission': round(re_commission, 0),
+        'commission_pct_used': round(commission_pct * 100, 1),
+        'settlement_pct_used': round(settlement_pct * 100, 1),
+        'price_reduction': price_reduction,
+        'total_selling_costs': round(total_selling_costs, 0),
+        # Total Cost Summary
+        'acq_closing': acq_closing,
+        'total_cost': round(total_cost, 0),
+        # Profitability (matches worksheet)
+        'gross_profit': round(gross_profit, 0),
+        'roi': round(cash_on_cash_roi, 1),
+        'cash_on_cash_roi': round(cash_on_cash_roi, 1),
+        'annualized_roi': round(annualized_roi, 1),
+        'profit_margin': round((gross_profit / est_sales_price * 100) if est_sales_price > 0 else 0, 1),
+        # MAO / 70% Rule
+        'mao_70': round(mao_70, 0), 'mao_custom': round(mao_custom, 0),
+        'spread': round(spread, 0),
+        'total_cost_to_arv': round((total_cost / arv * 100) if arv > 0 else 0, 1),
         'flip_pass': flip_pass, 'flip_borderline': flip_borderline,
         'flip_verdict': 'PASS' if flip_pass else ('BORDERLINE' if flip_borderline else 'FAIL'),
         # Rental
         'one_pct_rule': round(one_pct_rule, 2), 'one_pct_pass': one_pct_pass,
-        'cap_rate': round(cap_rate, 2), 'cash_on_cash': round(cash_on_cash, 2),
+        'cap_rate': round(cap_rate, 2), 'cash_on_cash': round(cash_on_cash_rental, 2),
         'dscr': round(dscr, 2), 'grm': round(grm, 1),
         'monthly_cashflow': round(monthly_cashflow, 0),
         'annual_cashflow': round(annual_cashflow, 0),
@@ -375,7 +444,7 @@ def calc_prospect_metrics(prospect, settings):
         'loan_amount': round(loan_amount, 0), 'cash_invested': round(cash_invested, 0),
         'rental_pass': rental_pass, 'rental_borderline': rental_borderline,
         'rental_verdict': 'PASS' if rental_pass else ('BORDERLINE' if rental_borderline else 'FAIL'),
-        # Thresholds used (for display)
+        # Thresholds
         'min_profit': min_profit, 'min_roi': min_roi,
         'arv_multiplier': mult,
     }

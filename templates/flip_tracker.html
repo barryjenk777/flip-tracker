@@ -860,26 +860,75 @@
         </div>
     </div>
 
-        <!-- ===== DEAL ANALYZER TAB ===== -->
+        <!-- ===== DEAL ANALYZER TAB (mirrors partner's P&L Worksheet) ===== -->
         <div class="tab-content" id="tab-prospects">
-            <!-- Quick Add -->
             <div class="card">
-                <div class="card-title">Quick Analyze — Enter a Deal</div>
-                <div class="quick-form">
-                    <div class="form-group"><label>Address</label><input type="text" id="qa-address" placeholder="123 Main St, City, VA"></div>
-                    <div class="form-group"><label>Asking Price</label><input type="number" id="qa-asking" placeholder="250000"></div>
-                    <div class="form-group"><label>ARV</label><input type="number" id="qa-arv" placeholder="350000"></div>
-                    <div class="form-group"><label>Rehab Est.</label><input type="number" id="qa-rehab" placeholder="40000"></div>
-                    <div class="form-group"><label>Monthly Rent</label><input type="number" id="qa-rent" placeholder="2000"></div>
-                    <button class="btn btn-primary" onclick="analyzeProspect()" style="height:38px;white-space:nowrap;">Analyze</button>
-                </div>
-                <div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
-                    <div class="form-group"><label>City</label><input type="text" id="qa-city" placeholder="Virginia Beach"></div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;font-style:italic;">This Profit & Loss analyzer is intended to be a very simple and quick tool when analyzing the ROI on a potential fix and flip property.</div>
+
+                <!-- Property Info -->
+                <div class="card-title">Property Info</div>
+                <div class="form-grid" style="margin-bottom:16px;">
+                    <div class="form-group"><label>Address</label><input type="text" id="qa-address" placeholder="1324 22nd St"></div>
+                    <div class="form-group"><label>City</label><input type="text" id="qa-city" placeholder="Chesapeake"></div>
                     <div class="form-group"><label>State</label><input type="text" id="qa-state" value="VA"></div>
-                    <div class="form-group"><label>Beds</label><input type="number" id="qa-beds" placeholder="3"></div>
-                    <div class="form-group"><label>Baths</label><input type="number" id="qa-baths" placeholder="2"></div>
-                    <div class="form-group"><label>Sq Ft</label><input type="number" id="qa-sqft" placeholder="1500"></div>
+                    <div class="form-group"><label>No. of Bedrooms</label><input type="number" id="qa-beds" placeholder="3"></div>
+                    <div class="form-group"><label>No. of Baths</label><input type="number" id="qa-baths" placeholder="2"></div>
+                    <div class="form-group"><label>Square Feet</label><input type="number" id="qa-sqft" placeholder="1500"></div>
+                    <div class="form-group"><label>Year Built</label><input type="number" id="qa-year" placeholder="1985"></div>
                     <div class="form-group"><label>Source</label><select id="qa-source"><option>MLS</option><option>Wholesaler</option><option>Driving for Dollars</option><option>Direct Mail</option><option>Auction</option><option>Referral</option><option>Other</option></select></div>
+                </div>
+
+                <div class="two-col" style="margin-bottom:16px;">
+                    <!-- LEFT: Property Value + Rehab -->
+                    <div>
+                        <div class="card-title">Property Value</div>
+                        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
+                            <div class="form-group"><label>MLS List Price (if any)</label><input type="number" id="qa-mls" placeholder="289900"></div>
+                            <div class="form-group"><label>As-Is Value</label><input type="number" id="qa-asis" placeholder="300000"></div>
+                            <div class="form-group" style="grid-column:1/-1"><label>After Repair Value (ARV)</label><input type="number" id="qa-arv" placeholder="575000" style="font-size:18px;font-weight:700;"></div>
+                        </div>
+
+                        <div class="card-title">Rehab Cost Estimate</div>
+                        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
+                            <div class="form-group"><label>Rehab Costs</label><input type="number" id="qa-rehab" placeholder="50000"></div>
+                            <div class="form-group"><label>Initial Prep</label><input type="number" id="qa-prep" placeholder="0"></div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT: Purchase Offer + Holding Costs -->
+                    <div>
+                        <div class="card-title">Purchase Offer Assumptions</div>
+                        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
+                            <div class="form-group"><label>Market Value Discount %</label><input type="number" id="qa-discount" placeholder="40" step="1"></div>
+                            <div class="form-group"><label>PURCHASE PRICE</label><input type="number" id="qa-asking" placeholder="392000" style="font-size:18px;font-weight:700;"></div>
+                            <div class="form-group"><label>Acq. Closing Costs</label><input type="number" id="qa-acqclose" placeholder="10000"></div>
+                            <div class="form-group"><label>Monthly Rent Est.</label><input type="number" id="qa-rent" placeholder="2000"></div>
+                        </div>
+
+                        <div class="card-title">Holding Cost Estimate</div>
+                        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
+                            <div class="form-group"><label>Est. Holding Period (months)</label><input type="number" id="qa-holdmonths" placeholder="6"></div>
+                            <div class="form-group"><label>Utilities (monthly)</label><input type="number" id="qa-utilities" placeholder="100"></div>
+                            <div class="form-group"><label>Landscape (monthly)</label><input type="number" id="qa-landscape" placeholder="0"></div>
+                            <div class="form-group"><label>Insurance (monthly)</label><input type="number" id="qa-insurance" placeholder="208"></div>
+                            <div class="form-group"><label>Taxes (monthly)</label><input type="number" id="qa-taxes" placeholder="208"></div>
+                            <div class="form-group"><label>Hard Money (monthly)</label><input type="number" id="qa-hardmoney" placeholder="4600"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selling Cost Detail -->
+                <div class="card-title">Selling Cost Detail</div>
+                <div class="form-grid" style="margin-bottom:16px;">
+                    <div class="form-group"><label>Seller Settlement Costs %</label><input type="number" id="qa-settlement" placeholder="1.5" step="0.1"></div>
+                    <div class="form-group"><label>Seller Concessions $</label><input type="number" id="qa-concessions" placeholder="0"></div>
+                    <div class="form-group"><label>RE Commission %</label><input type="number" id="qa-commission" placeholder="6" step="0.1"></div>
+                    <div class="form-group"><label>Price Reduction $</label><input type="number" id="qa-pricereduction" placeholder="0"></div>
+                </div>
+
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="analyzeProspect()" style="padding:12px 32px;font-size:15px;">Analyze This Deal</button>
+                    <button class="btn btn-secondary" onclick="clearAnalyzerForm()">Clear Form</button>
                 </div>
             </div>
 
@@ -2103,20 +2152,40 @@ async function analyzeProspect() {
         asking_price: +$('qa-asking').value || 0,
         arv: +$('qa-arv').value || 0,
         estimated_rehab: +$('qa-rehab').value || 0,
+        initial_prep: +$('qa-prep').value || 0,
         monthly_rent_estimate: +$('qa-rent').value || 0,
         beds: +$('qa-beds').value || 0,
         baths: +$('qa-baths').value || 0,
         sqft: +$('qa-sqft').value || 0,
+        year_built: +$('qa-year').value || 0,
         source: $('qa-source').value,
+        mls_list_price: +$('qa-mls').value || 0,
+        as_is_value: +$('qa-asis').value || 0,
+        market_discount_pct: (+$('qa-discount').value || 0) / 100,
+        acq_closing_costs: +$('qa-acqclose').value || 0,
+        holding_months: +$('qa-holdmonths').value || 0,
+        monthly_utilities: +$('qa-utilities').value || 0,
+        monthly_landscape: +$('qa-landscape').value || 0,
+        monthly_insurance: +$('qa-insurance').value || 0,
+        monthly_taxes: +$('qa-taxes').value || 0,
+        monthly_hard_money: +$('qa-hardmoney').value || 0,
+        seller_settlement_pct: (+$('qa-settlement').value || 1.5) / 100,
+        seller_concessions: +$('qa-concessions').value || 0,
+        commission_pct: (+$('qa-commission').value || 6) / 100,
+        price_reduction: +$('qa-pricereduction').value || 0,
     };
-    if (!data.address || !data.asking_price) { alert('Enter at least an address and asking price.'); return; }
+    if (!data.address || !data.asking_price) { alert('Enter at least an address and purchase price.'); return; }
     const res = await fetch('/api/prospects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
     const prospect = await res.json();
     currentProspect = prospect;
     renderProspectResults(prospect);
     await loadProspects();
-    // Clear form
-    ['qa-address','qa-city','qa-asking','qa-arv','qa-rehab','qa-rent','qa-beds','qa-baths','qa-sqft'].forEach(id => { if ($(id)) $(id).value = ''; });
+}
+
+function clearAnalyzerForm() {
+    ['qa-address','qa-city','qa-asking','qa-arv','qa-rehab','qa-prep','qa-rent','qa-beds','qa-baths','qa-sqft','qa-year','qa-mls','qa-asis','qa-discount','qa-acqclose','qa-holdmonths','qa-utilities','qa-landscape','qa-insurance','qa-taxes','qa-hardmoney','qa-settlement','qa-concessions','qa-commission','qa-pricereduction'].forEach(id => { if ($(id)) $(id).value = ''; });
+    $('qa-state').value = 'VA';
+    $('prospect-results').style.display = 'none';
 }
 
 function renderProspectResults(p) {
@@ -2124,66 +2193,112 @@ function renderProspectResults(p) {
     const panel = $('prospect-results');
     panel.style.display = 'block';
 
-    const flipColor = m.flip_pass ? 'var(--green)' : m.flip_borderline ? 'var(--yellow)' : 'var(--red)';
-    const rentalColor = m.rental_pass ? 'var(--green)' : m.rental_borderline ? 'var(--yellow)' : 'var(--red)';
     const flipBadge = m.flip_verdict.toLowerCase();
     const rentalBadge = m.rental_verdict.toLowerCase();
+    const profitColor = m.gross_profit >= 0 ? 'var(--green)' : 'var(--red)';
+    const holdMonths = p.holding_months || prospectData.settings.holding_months || 6;
 
     panel.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <div>
-                <div class="card-title" style="margin-bottom:2px;">Analysis: ${p.address}</div>
-                <div style="font-size:12px;color:var(--text-muted);">${p.city || ''} ${p.state || ''} | Asking: ${fmt(p.asking_price)} | ARV: ${fmt(p.arv)} | Rehab: ${fmt(p.estimated_rehab)}</div>
+                <h2 style="font-size:18px;font-weight:800;color:var(--accent);margin-bottom:2px;">${p.address}</h2>
+                <div style="font-size:12px;color:var(--text-muted);">${p.city||''}, ${p.state||''} | ${p.beds||0} bed / ${p.baths||0} bath | ${p.sqft||0} sqft</div>
             </div>
-            <div style="display:flex;gap:8px;">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <span class="verdict-badge ${flipBadge}" style="font-size:11px;">Flip: ${m.flip_verdict}</span>
+                <span class="verdict-badge ${rentalBadge}" style="font-size:11px;">Rent: ${m.rental_verdict}</span>
                 <select onchange="updateProspectStage('${p.id}',this.value)" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:12px;">
                     ${STAGES.map(s => `<option value="${s.id}" ${p.stage===s.id?'selected':''}>${s.label}</option>`).join('')}
                 </select>
                 <button class="btn btn-primary btn-sm" onclick="convertProspect('${p.id}')">Convert to Property</button>
             </div>
         </div>
+
         <div class="results-grid">
+            <!-- LEFT: Total Cost Summary (mirrors worksheet) -->
             <div class="results-col">
-                <h3 style="color:${flipColor}">FLIP Analysis <span class="verdict-badge ${flipBadge}">${m.flip_verdict}</span></h3>
-                <div class="metric-row"><span class="ml">MAO (70% Rule)</span><span class="mv">${fmt(m.mao_70)}</span></div>
-                <div class="metric-row"><span class="ml">MAO (${(m.arv_multiplier*100).toFixed(0)}% Custom)</span><span class="mv">${fmt(m.mao_custom)}</span></div>
-                <div class="metric-row"><span class="ml">Spread (MAO - Asking)</span><span class="mv" style="color:${m.spread>=0?'var(--green)':'var(--red)'}">${fmt(m.spread)}</span></div>
-                <div class="metric-row" style="border-top:1px solid var(--border);padding-top:8px;"><span class="ml">Est. Commissions (${(m.commissions/p.arv*100).toFixed(0)}%)</span><span class="mv" style="color:var(--red)">-${fmt(m.commissions)}</span></div>
-                <div class="metric-row"><span class="ml">Est. Closing Costs</span><span class="mv" style="color:var(--red)">-${fmt(m.closing_costs_flip)}</span></div>
-                <div class="metric-row"><span class="ml">Holding Costs (${prospectData.settings.holding_months || 6} mo)</span><span class="mv" style="color:var(--red)">-${fmt(m.holding_total)}</span></div>
-                <div class="metric-row" style="border-top:2px solid var(--accent);padding-top:8px;font-size:15px;">
-                    <span class="ml"><strong>Est. Gross Profit</strong></span>
-                    <span class="mv" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}"><strong>${fmt(m.gross_profit)}</strong></span>
+                <h3>Total Cost Summary</h3>
+                <div class="metric-row"><span class="ml">Purchase Price</span><span class="mv">${fmt(p.asking_price)}</span></div>
+                <div class="metric-row"><span class="ml">Acq. Closing Costs</span><span class="mv">${fmt(m.acq_closing)}</span></div>
+                <div class="metric-row"><span class="ml">Rehab & Landscape</span><span class="mv">${fmt(m.rehab_total)}</span></div>
+                <div class="metric-row"><span class="ml">Holding Costs: ${holdMonths} mo.</span><span class="mv">${fmt(m.holding_total)}</span></div>
+                <div class="metric-row"><span class="ml">Selling Cost</span><span class="mv">${fmt(m.total_selling_costs)}</span></div>
+                <div class="metric-row" style="border-top:2px solid var(--accent);padding-top:8px;font-size:16px;">
+                    <span class="ml"><strong>Total Cost</strong></span>
+                    <span class="mv"><strong>${fmt(m.total_cost)}</strong></span>
                 </div>
-                <div class="metric-row"><span class="ml">Est. ROI</span><span class="mv" style="color:${m.roi>=15?'var(--green)':m.roi>=10?'var(--yellow)':'var(--red)'}">${pct(m.roi)}</span></div>
-                <div class="metric-row"><span class="ml">Profit Margin</span><span class="mv">${pct(m.profit_margin)}</span></div>
-                <div class="metric-row"><span class="ml">Cost-to-ARV</span><span class="mv" style="color:${m.total_cost_to_arv>85?'var(--red)':m.total_cost_to_arv>75?'var(--yellow)':'var(--green)'}">${pct(m.total_cost_to_arv)}</span></div>
-                <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">Min profit: ${fmt(m.min_profit)} | Min ROI: ${m.min_roi}%</div>
+
+                <div style="margin-top:16px;">
+                    <h3 style="margin-bottom:8px;">Purchase Offer Assumptions</h3>
+                    <div class="metric-row"><span class="ml">Target Purchase Price</span><span class="mv">${fmt(m.target_purchase)}</span></div>
+                    <div class="metric-row"><span class="ml">Discount from Market Value</span><span class="mv" style="color:${m.discount_from_market<0?'var(--green)':'var(--red)'}">${m.discount_from_market.toFixed(1)}%</span></div>
+                    ${m.mls_list_price > 0 ? `<div class="metric-row"><span class="ml">Discount from List Price</span><span class="mv" style="color:${m.discount_from_list<0?'var(--green)':'var(--red)'}">${m.discount_from_list.toFixed(1)}%</span></div>` : ''}
+                    <div class="metric-row"><span class="ml">MAO (70% Rule)</span><span class="mv">${fmt(m.mao_70)}</span></div>
+                    <div class="metric-row"><span class="ml">Spread (MAO - Purchase)</span><span class="mv" style="color:${m.spread>=0?'var(--green)':'var(--red)'}">${fmt(m.spread)}</span></div>
+                </div>
             </div>
+
+            <!-- RIGHT: Selling Cost Detail + Holding Cost (mirrors worksheet) -->
             <div class="results-col">
-                <h3 style="color:${rentalColor}">RENTAL Analysis <span class="verdict-badge ${rentalBadge}">${m.rental_verdict}</span></h3>
-                <div class="metric-row"><span class="ml">Monthly Rent</span><span class="mv">${fmt(p.monthly_rent_estimate)}</span></div>
-                <div class="metric-row"><span class="ml">1% Rule</span><span class="mv" style="color:${m.one_pct_pass?'var(--green)':'var(--red)'}">${m.one_pct_rule.toFixed(2)}% ${m.one_pct_pass?'&#10003;':'&#10007;'}</span></div>
-                <div class="metric-row"><span class="ml">Cap Rate</span><span class="mv" style="color:${m.cap_rate>=5?'var(--green)':m.cap_rate>=3?'var(--yellow)':'var(--red)'}">${m.cap_rate.toFixed(2)}%</span></div>
-                <div class="metric-row"><span class="ml">Cash-on-Cash Return</span><span class="mv" style="color:${m.cash_on_cash>=8?'var(--green)':m.cash_on_cash>=5?'var(--yellow)':'var(--red)'}">${m.cash_on_cash.toFixed(2)}%</span></div>
-                <div class="metric-row"><span class="ml">DSCR</span><span class="mv" style="color:${m.dscr>=1.25?'var(--green)':m.dscr>=1.0?'var(--yellow)':'var(--red)'}">${m.dscr.toFixed(2)}</span></div>
-                <div class="metric-row"><span class="ml">Gross Rent Multiplier</span><span class="mv">${m.grm.toFixed(1)}</span></div>
-                <div class="metric-row" style="border-top:1px solid var(--border);padding-top:8px;"><span class="ml">NOI (Annual)</span><span class="mv">${fmt(m.noi)}</span></div>
-                <div class="metric-row"><span class="ml">Loan Amount (${(prospectData.settings.down_payment_pct||20)}% down)</span><span class="mv">${fmt(m.loan_amount)}</span></div>
-                <div class="metric-row"><span class="ml">Monthly Payment</span><span class="mv" style="color:var(--red)">-${fmt(m.monthly_payment)}</span></div>
-                <div class="metric-row" style="border-top:2px solid var(--accent);padding-top:8px;font-size:15px;">
-                    <span class="ml"><strong>Monthly Cashflow</strong></span>
-                    <span class="mv" style="color:${m.monthly_cashflow>=200?'var(--green)':m.monthly_cashflow>=0?'var(--yellow)':'var(--red)'}"><strong>${fmt(m.monthly_cashflow)}/mo</strong></span>
+                <h3>Selling Cost Detail</h3>
+                <div class="metric-row"><span class="ml">Estimated Sales Price</span><span class="mv" style="color:var(--green)">${fmt(m.est_sales_price)}</span></div>
+                <div class="metric-row"><span class="ml">Seller Settlement (${m.settlement_pct_used}%)</span><span class="mv">${fmt(m.seller_settlement)}</span></div>
+                <div class="metric-row"><span class="ml">Seller Concessions</span><span class="mv">${fmt(m.seller_concessions)}</span></div>
+                <div class="metric-row"><span class="ml">RE Commission (${m.commission_pct_used}%)</span><span class="mv">${fmt(m.re_commission)}</span></div>
+                <div class="metric-row"><span class="ml">Price Reduction</span><span class="mv">${fmt(m.price_reduction)}</span></div>
+                <div class="metric-row" style="border-top:1px solid var(--border);padding-top:6px;"><span class="ml"><strong>Total Selling Costs</strong></span><span class="mv"><strong>${fmt(m.total_selling_costs)}</strong></span></div>
+
+                <div style="margin-top:16px;">
+                    <h3 style="margin-bottom:8px;">Holding Cost Detail <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(${holdMonths} months)</span></h3>
+                    <div class="metric-row"><span class="ml">Utilities</span><span class="mv">${fmt(m.monthly_utilities)}/mo</span></div>
+                    <div class="metric-row"><span class="ml">Landscape</span><span class="mv">${fmt(m.monthly_landscape)}/mo</span></div>
+                    <div class="metric-row"><span class="ml">Insurance</span><span class="mv">${fmt(m.monthly_insurance)}/mo</span></div>
+                    <div class="metric-row"><span class="ml">Taxes</span><span class="mv">${fmt(m.monthly_taxes)}/mo</span></div>
+                    <div class="metric-row"><span class="ml">Hard Money</span><span class="mv">${fmt(m.monthly_hard_money)}/mo</span></div>
+                    <div class="metric-row" style="border-top:1px solid var(--border);padding-top:6px;"><span class="ml"><strong>Monthly Hold Cost</strong></span><span class="mv"><strong>${fmt(m.monthly_hold_total)}</strong></span></div>
+                    <div class="metric-row"><span class="ml"><strong>Total (${holdMonths} mo.)</strong></span><span class="mv"><strong>${fmt(m.holding_total)}</strong></span></div>
                 </div>
-                <div class="metric-row"><span class="ml">Annual Cashflow</span><span class="mv">${fmt(m.annual_cashflow)}</span></div>
-                <div class="metric-row"><span class="ml">Cash Invested</span><span class="mv">${fmt(m.cash_invested)}</span></div>
             </div>
         </div>
-        <div style="margin-top:12px;">
-            <div class="form-group" style="max-width:100%;"><label>Notes</label><textarea id="prospect-notes-${p.id}" rows="2" style="width:100%;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text-primary);font-size:13px;resize:vertical;" onblur="updateProspectNotes('${p.id}',this.value)">${p.notes||''}</textarea></div>
+
+        <!-- Profitability Analysis (matches worksheet bottom section) -->
+        <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+            <div class="stat-card ${m.flip_pass?'green':m.flip_borderline?'yellow':'red'}">
+                <div class="stat-label">Profit $</div>
+                <div class="stat-value" style="color:${profitColor}">${fmt(m.gross_profit)}</div>
+            </div>
+            <div class="stat-card ${m.cash_on_cash_roi>=15?'green':m.cash_on_cash_roi>=10?'yellow':'red'}">
+                <div class="stat-label">Cash on Cash ROI %</div>
+                <div class="stat-value">${pct(m.cash_on_cash_roi)}</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-label">Annualized (3x turn)</div>
+                <div class="stat-value">${pct(m.annualized_roi)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Cost-to-ARV</div>
+                <div class="stat-value" style="color:${m.total_cost_to_arv>85?'var(--red)':m.total_cost_to_arv>75?'var(--yellow)':'var(--green)'}">${pct(m.total_cost_to_arv)}</div>
+            </div>
+        </div>
+
+        <!-- Rental Analysis (additional) -->
+        ${p.monthly_rent_estimate > 0 ? `
+        <div class="card" style="margin-top:16px;background:var(--bg-primary);">
+            <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;">Rental Analysis <span class="verdict-badge ${rentalBadge}" style="font-size:9px;">${m.rental_verdict}</span></h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
+                <div class="metric-row"><span class="ml">Monthly Rent</span><span class="mv">${fmt(p.monthly_rent_estimate)}</span></div>
+                <div class="metric-row"><span class="ml">1% Rule</span><span class="mv" style="color:${m.one_pct_pass?'var(--green)':'var(--red)'}">${m.one_pct_rule.toFixed(2)}%</span></div>
+                <div class="metric-row"><span class="ml">Cap Rate</span><span class="mv">${m.cap_rate.toFixed(2)}%</span></div>
+                <div class="metric-row"><span class="ml">Cash-on-Cash</span><span class="mv">${m.cash_on_cash.toFixed(2)}%</span></div>
+                <div class="metric-row"><span class="ml">DSCR</span><span class="mv">${m.dscr.toFixed(2)}</span></div>
+                <div class="metric-row"><span class="ml">Monthly Cashflow</span><span class="mv" style="color:${m.monthly_cashflow>=200?'var(--green)':'var(--red)'}">${fmt(m.monthly_cashflow)}</span></div>
+            </div>
+        </div>` : ''}
+
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:start;">
+            <div class="form-group" style="flex:1;"><label>Notes</label><textarea id="prospect-notes-${p.id}" rows="2" style="width:100%;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text-primary);font-size:13px;resize:vertical;" onblur="updateProspectNotes('${p.id}',this.value)">${p.notes||''}</textarea></div>
         </div>
     `;
-    // Scroll to results
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
