@@ -321,8 +321,8 @@ def seed_second_property():
             return
     prop = {
         'id': 'property-2',
-        'address': 'Property 2',
-        'city': '',
+        'address': '4420 Mallard Cres',
+        'city': 'Portsmouth',
         'state': 'VA',
         'zip': '',
         'sqft': 0,
@@ -381,8 +381,8 @@ def seed_third_property():
             return
     prop = {
         'id': 'property-3',
-        'address': 'Property 3',
-        'city': '',
+        'address': '737 Gemstone Ln',
+        'city': 'Virginia Beach',
         'state': 'VA',
         'zip': '',
         'sqft': 0,
