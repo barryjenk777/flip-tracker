@@ -545,7 +545,48 @@
     "default_contingency_pct": 15.0,
     "partner_split_pct": 50.0
   },
-  "prospects": [],
+  "prospects": [
+    {
+      "address": "Clemson",
+      "city": "Clemson",
+      "state": "VA",
+      "asking_price": 220000,
+      "arv": 350000,
+      "estimated_rehab": 40000,
+      "initial_prep": 0,
+      "market_discount_pct": 0,
+      "acq_closing_costs": 6000,
+      "holding_months": 4,
+      "monthly_utilities": 100,
+      "monthly_landscape": 0,
+      "monthly_insurance": 208,
+      "monthly_taxes": 208,
+      "monthly_hard_money": 2383,
+      "hard_money_rate": 11,
+      "seller_settlement_pct": 1.5,
+      "seller_concessions": 0,
+      "commission_pct": 6,
+      "price_reduction": 0,
+      "source": "MLS",
+      "beds": 3,
+      "baths": 2,
+      "sqft": 1500,
+      "id": "clemson-20260327170347",
+      "stage": "new_lead",
+      "date_added": "2026-03-27",
+      "last_analyzed": "2026-03-27 17:04",
+      "verdict": null,
+      "notes": "",
+      "year_built": 0,
+      "monthly_rent_estimate": 0,
+      "stage_history": [
+        {
+          "stage": "new_lead",
+          "date": "2026-03-27 17:03"
+        }
+      ]
+    }
+  ],
   "prospect_settings": {
     "min_profit": 25000,
     "min_roi": 15,
