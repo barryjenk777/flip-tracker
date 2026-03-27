@@ -528,21 +528,42 @@ def parse_closing_disclosure(pdf_bytes):
             result['cash_to_close'] = float(m.group(1).replace(',', ''))
 
         # Extract line items — look for lines with dollar amounts
-        # Pattern: description followed by a dollar amount
+        # IMPORTANT: Filter out non-closing-cost items (sale price, loan amount, deposits, etc.)
+        # Closing Disclosures have sections A-H for actual closing costs on page 2
         line_pattern = re.compile(r'^(.+?)\s+\$?([\d,]+\.\d{2})\s*$', re.MULTILINE)
+
+        # These are NOT closing costs — they're summary/header items from page 1 and 3
+        exclude_keywords = [
+            'total', 'page', 'closing disclosure', 'loan estimate',
+            'projected', 'annual', 'monthly', 'sale price', 'sales price',
+            'contract price', 'purchase price', 'property value',
+            'loan amount', 'principal', 'balance', 'payoff',
+            'deposit', 'earnest', 'down payment', 'cash to close',
+            'cash from', 'cash to', 'closing costs', 'paid already',
+            'adjustments', 'aggregate', 'excess', 'net',
+            'amount due', 'amount from', 'amount to',
+            'before closing', 'at closing', 'summaries',
+            'seller credit', 'seller-credit', 'final',
+            'existing loan', 'first mortgage', 'second mortgage',
+            'payoff amount', 'amount owed', 'proration',
+        ]
+
+        # Only include items that look like actual fees/charges (typically under $50K)
         for match in line_pattern.finditer(all_text):
             desc = match.group(1).strip()
             amount = float(match.group(2).replace(',', ''))
-            if amount < 1 or amount > 10000000:
+            # Skip tiny amounts and anything over $50K (those are loan/price amounts, not fees)
+            if amount < 5 or amount > 50000:
                 continue
-            # Skip header/total lines
-            skip_words = ['total', 'page', 'closing disclosure', 'loan estimate',
-                          'projected', 'annual', 'monthly']
-            if any(sw in desc.lower() for sw in skip_words):
+            desc_lower = desc.lower()
+            # Skip excluded items
+            if any(kw in desc_lower for kw in exclude_keywords):
+                continue
+            # Skip lines that are just numbers or very short
+            if len(desc) < 3:
                 continue
             # Classify for tax purposes
             tax_cat = 'Other - Review Required'
-            desc_lower = desc.lower()
             for keyword, category in CD_TAX_KEYWORDS.items():
                 if keyword in desc_lower:
                     tax_cat = category
@@ -1479,84 +1500,100 @@ def generate_pnl_pdf(pnl, prop):
         return b'%PDF-1.0 reportlab not installed'
 
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+                            leftMargin=0.6 * inch, rightMargin=0.6 * inch)
     styles = getSampleStyleSheet()
     elements = []
+
+    # Paragraph styles for wrapping text in table cells
+    cell_style = ParagraphStyle('Cell', fontName='Helvetica', fontSize=9, leading=11)
+    cell_bold = ParagraphStyle('CellBold', fontName='Helvetica-Bold', fontSize=9, leading=11)
+    cell_sub = ParagraphStyle('CellSub', fontName='Helvetica', fontSize=8, leading=10, textColor=colors.Color(0.4, 0.4, 0.4))
+    cell_indent = ParagraphStyle('CellIndent', fontName='Helvetica', fontSize=9, leading=11, leftIndent=16)
+    cell_indent2 = ParagraphStyle('CellIndent2', fontName='Helvetica', fontSize=8, leading=10, leftIndent=32, textColor=colors.Color(0.4, 0.4, 0.4))
+    amt_style = ParagraphStyle('Amt', fontName='Courier', fontSize=9, leading=11, alignment=2)  # right-aligned
+    amt_bold = ParagraphStyle('AmtBold', fontName='Courier-Bold', fontSize=9, leading=11, alignment=2)
 
     # Header
     title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, spaceAfter=4)
     sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=10, textColor=colors.grey)
-    elements.append(Paragraph(f"Profit & Loss Statement", title_style))
-    addr = f"{prop.get('address', '')} — {prop.get('city', '')}, {prop.get('state', '')}"
+    elements.append(Paragraph("Profit &amp; Loss Statement", title_style))
+    addr = f"{prop.get('address', '')} &mdash; {prop.get('city', '')}, {prop.get('state', '')}"
     elements.append(Paragraph(addr, sub_style))
     dates = f"Purchased: {pnl.get('purchase_date', 'N/A')} | Sold: {pnl.get('sale_date', 'N/A')} | Days Held: {pnl.get('days_held', 0)}"
     elements.append(Paragraph(dates, sub_style))
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 14))
 
-    def fmt(v):
+    def f(v):
         return f"${v:,.2f}" if v >= 0 else f"-${abs(v):,.2f}"
 
-    # Build table data
-    data = [
-        ['GROSS INCOME', '', ''],
-        ['  Sale Price', '', fmt(pnl['sale_price'])],
-    ]
+    def P(text, style=cell_style):
+        return Paragraph(str(text), style)
+
+    def A(val, bold=False):
+        return Paragraph(f(val), amt_bold if bold else amt_style)
+
+    # Build table with Paragraph objects for proper text wrapping
+    data = []
+    data.append([P('GROSS INCOME', cell_bold), '', ''])
+    data.append([P('Sale Price', cell_indent), '', A(pnl['sale_price'])])
     if pnl['seller_concessions'] > 0:
-        data.append(['  Less: Seller Concessions', '', f"-{fmt(pnl['seller_concessions'])}"])
-    data.append(['  Net Sale Proceeds', '', fmt(pnl['net_sale_proceeds'])])
+        data.append([P('Less: Seller Concessions', cell_indent), '', A(-pnl['seller_concessions'])])
+    data.append([P('Net Sale Proceeds', cell_indent), '', A(pnl['net_sale_proceeds'], True)])
     data.append(['', '', ''])
-    data.append(['COST OF GOODS SOLD', '', ''])
-    data.append(['  Purchase Price', '', fmt(pnl['purchase_price'])])
-    data.append(['  Acquisition Closing Costs', '', fmt(pnl['acq_closing_total'])])
+    data.append([P('COST OF GOODS SOLD (Capitalized to Basis)', cell_bold), '', ''])
+    data.append([P('Purchase Price', cell_indent), '', A(pnl['purchase_price'])])
+    data.append([P('Acquisition Closing Costs', cell_indent), '', A(pnl['acq_closing_total'])])
     if pnl['acq_closing_items']:
         for item in pnl['acq_closing_items'][:15]:
-            data.append(['', f"    {item['description']}", fmt(item['amount'])])
-    data.append(['  Renovation Costs', '', fmt(pnl['renovation_total'])])
+            data.append([P(item['description'], cell_indent2), P(item.get('tax_category', ''), cell_sub), A(item['amount'])])
+    data.append([P('Renovation Costs', cell_indent), '', A(pnl['renovation_total'])])
     for label, amount in pnl['renovation_subtotals'].items():
-        data.append(['', f"    {label}", fmt(amount)])
+        data.append([P(label, cell_indent2), '', A(amount)])
     if pnl['total_credits'] > 0:
-        data.append(['', '    Less: Credits/Returns', f"-{fmt(pnl['total_credits'])}"])
-    data.append(['  Holding Costs (Capitalized)', '', fmt(pnl['holding_total'])])
+        data.append([P('Less: Credits/Returns', cell_indent2), '', A(-pnl['total_credits'])])
+    data.append([P('Holding Costs (Capitalized)', cell_indent), P('IRC §263A', cell_sub), A(pnl['holding_total'])])
     for label, amount in pnl['holding_breakdown'].items():
-        data.append(['', f"    {label}", fmt(amount)])
-    data.append(['  TOTAL COGS', '', fmt(pnl['total_cogs'])])
+        data.append([P(label, cell_indent2), '', A(amount)])
+    data.append([P('TOTAL COGS', cell_indent), '', A(pnl['total_cogs'], True)])
     data.append(['', '', ''])
-    data.append(['SELLING COSTS', '', ''])
-    data.append([f"  RE Commissions ({pnl['commission_pct']}%)", '', fmt(pnl['commission'])])
-    data.append([f"  Sale Settlement ({pnl['sale_closing_pct']}%)", '', fmt(pnl['sale_closing'])])
+    data.append([P('SELLING COSTS', cell_bold), '', ''])
+    data.append([P(f"RE Commissions ({pnl['commission_pct']}%)", cell_indent), '', A(pnl['commission'])])
+    data.append([P(f"Sale Settlement ({pnl['sale_closing_pct']}%)", cell_indent), '', A(pnl['sale_closing'])])
     for se in pnl.get('selling_expenses', []):
-        data.append([f"    {se['description']}", se['vendor'], fmt(se['amount'])])
-    data.append(['  TOTAL SELLING COSTS', '', fmt(pnl['total_selling'])])
+        data.append([P(se['description'], cell_indent2), P(se['vendor'], cell_sub), A(se['amount'])])
+    data.append([P('TOTAL SELLING COSTS', cell_indent), '', A(pnl['total_selling'], True)])
     data.append(['', '', ''])
-    data.append(['TOTAL ALL COSTS', '', fmt(pnl['total_costs'])])
+    data.append([P('TOTAL ALL COSTS', cell_bold), '', A(pnl['total_costs'], True)])
     data.append(['', '', ''])
-    data.append(['NET PROFIT (LOSS)', '', fmt(pnl['net_profit'])])
-    data.append([f"  Est. Self-Employment Tax ({pnl['se_tax_rate']}%)", '', fmt(pnl['se_tax'])])
-    data.append(['  Net After SE Tax', '', fmt(pnl['net_after_se'])])
+    data.append([P('NET PROFIT (LOSS)', cell_bold), '', A(pnl['net_profit'], True)])
+    data.append([P(f"Est. Self-Employment Tax ({pnl['se_tax_rate']}%)", cell_indent), P('12.4% SS + 2.9% Medicare', cell_sub), A(pnl['se_tax'])])
+    data.append([P('Net After SE Tax', cell_indent), '', A(pnl['net_after_se'], True)])
     data.append(['', '', ''])
-    data.append([f"  Partner A ({pnl['partner_split_pct']}%)", '', fmt(pnl['partner_a_share'])])
-    data.append([f"  Partner B ({100 - pnl['partner_split_pct']}%)", '', fmt(pnl['partner_b_share'])])
+    data.append([P('PARTNERSHIP SPLIT', cell_bold), '', ''])
+    data.append([P(f"Partner A ({pnl['partner_split_pct']}%)", cell_indent), '', A(pnl['partner_a_share'])])
+    data.append([P(f"Partner B ({100 - pnl['partner_split_pct']}%)", cell_indent), '', A(pnl['partner_b_share'])])
 
-    col_widths = [3.0 * inch, 2.5 * inch, 1.5 * inch]
+    page_width = letter[0] - 1.2 * inch  # total usable width
+    col_widths = [page_width * 0.45, page_width * 0.30, page_width * 0.25]
     table = Table(data, colWidths=col_widths)
 
     # Style
     style_cmds = [
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
     ]
-    # Bold section headers and totals
+    # Highlight section headers and totals
     for i, row in enumerate(data):
-        if row[0] and not row[0].startswith(' '):
-            style_cmds.append(('FONTNAME', (0, i), (-1, i), 'Helvetica-Bold'))
-            style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.Color(0.95, 0.95, 0.95)))
-        if 'TOTAL' in row[0] or 'NET PROFIT' in row[0]:
-            style_cmds.append(('FONTNAME', (0, i), (-1, i), 'Helvetica-Bold'))
-            style_cmds.append(('LINEABOVE', (0, i), (-1, i), 1, colors.black))
+        cell0 = row[0]
+        cell0_text = cell0.text if hasattr(cell0, 'text') else str(cell0)
+        if any(cell0_text.startswith(s) for s in ['GROSS', 'COST OF', 'SELLING', 'TOTAL ALL', 'NET PROFIT', 'PARTNERSHIP']):
+            style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.Color(0.94, 0.94, 0.94)))
+        if 'TOTAL' in cell0_text or 'NET PROFIT' in cell0_text:
+            style_cmds.append(('LINEABOVE', (0, i), (-1, i), 0.75, colors.black))
 
     table.setStyle(TableStyle(style_cmds))
     elements.append(table)
