@@ -872,7 +872,9 @@
                         <option>Staging</option>
                         <option>Repairs - Pest</option>
                         <option>Repairs - Foundation</option>
+                        <option>Utilities</option>
                         <option>Dumpster</option>
+                        <option>Appliances</option>
                         <option>Other</option>
                     </select>
                 </div>
@@ -1174,7 +1176,7 @@ function makeEditable(td, origIdx, field, currentVal, type, updateFn) {
     const saveFn = updateFn === 'draw' ? updateDraw : updateFn === 'mortgage' ? updateMortgage : updateExpense;
     const isCategory = field === 'category';
     if (isCategory) {
-        const cats = ['Labor - Plumbing','Labor - Electrical','Labor - HVAC','Labor - Kitchen','Labor - General','Building Materials','Flooring','Paint','Roofing','Windows & Doors','Landscaping','Permits','Marketing','Staging','Repairs - Pest','Repairs - Foundation','Dumpster','Appliances','Other'];
+        const cats = ['Labor - Plumbing','Labor - Electrical','Labor - HVAC','Labor - Kitchen','Labor - General','Building Materials','Flooring','Paint','Roofing','Windows & Doors','Landscaping','Permits','Marketing','Staging','Repairs - Pest','Repairs - Foundation','Utilities','Dumpster','Appliances','Other'];
         const sel = document.createElement('select');
         sel.style.cssText = 'background:var(--bg-primary);border:1px solid var(--accent);border-radius:4px;padding:4px 8px;color:var(--text-primary);font-size:13px;width:100%;';
         cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; if (c === currentVal) o.selected = true; sel.appendChild(o); });
