@@ -583,21 +583,68 @@
         .metric-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(42,58,74,0.3); font-size: 13px; }
         .metric-row .ml { color: var(--text-secondary); }
         .metric-row .mv { font-weight: 600; }
-        .pipeline-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-        .pipeline-col { background: var(--bg-primary); border-radius: var(--radius); padding: 12px; min-height: 100px; }
+        /* ---- Pipeline Board ---- */
+        .pipeline-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .pipeline-col { background: var(--bg-primary); border-radius: var(--radius); padding: 10px; min-height: 120px; transition: all 0.2s; contain: content; }
+        .pipeline-col.drag-over { border: 2px dashed var(--accent); background: rgba(79,195,247,0.06); }
         .pipeline-col-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; }
         .pipeline-col-title .count { background: var(--bg-card); padding: 1px 8px; border-radius: 10px; font-size: 10px; }
-        .prospect-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; }
-        .prospect-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-        .prospect-card .pc-addr { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-        .prospect-card .pc-meta { font-size: 11px; color: var(--text-secondary); display: flex; gap: 8px; flex-wrap: wrap; }
-        .prospect-card .pc-meta strong { color: var(--text-primary); }
+        .prospect-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 6px; cursor: grab; transition: all 0.15s; position: relative; border-left: 3px solid var(--border); }
+        .prospect-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .prospect-card.dragging { opacity: 0.4; transform: rotate(2deg); }
+        .prospect-card.pass { border-left-color: var(--green); }
+        .prospect-card.borderline { border-left-color: var(--yellow); }
+        .prospect-card.fail { border-left-color: var(--red); }
+        .prospect-card .pc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; }
+        .prospect-card .pc-addr { font-size: 12px; font-weight: 700; line-height: 1.2; }
+        .prospect-card .pc-location { font-size: 10px; color: var(--text-muted); margin-bottom: 3px; }
+        .prospect-card .pc-nums { font-size: 10px; color: var(--text-secondary); display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+        .prospect-card .pc-nums strong { color: var(--text-primary); }
+        .prospect-card .pc-footer { display: flex; justify-content: space-between; align-items: center; }
+        .prospect-card .pc-verdicts { display: flex; gap: 4px; }
+        .prospect-card .pc-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+        .prospect-card:hover .pc-actions { opacity: 1; }
+        .pc-action-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); cursor: pointer; font-size: 10px; padding: 2px 6px; transition: all 0.15s; }
+        .pc-action-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .pc-action-btn.danger:hover { color: var(--red); border-color: var(--red); }
+        .days-badge { font-size: 9px; padding: 1px 5px; border-radius: 8px; font-weight: 600; }
+        .days-badge.fresh { background: var(--green-dim); color: var(--green); }
+        .days-badge.aging { background: var(--yellow-dim); color: var(--yellow); }
+        .days-badge.stale { background: var(--red-dim); color: var(--red); }
+        .hot-icon { color: #ff6b35; animation: hotPulse 2s ease-in-out infinite; font-size: 11px; }
+        @keyframes hotPulse { 0%,100% { opacity: 0.7; } 50% { opacity: 1; } }
+        .touch-clone { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.85; transform: rotate(3deg); box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+
+        /* Pipeline stats & filters */
+        .pipeline-stats-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+        .pipeline-stat { background: var(--bg-primary); border-radius: 8px; padding: 6px 12px; font-size: 11px; }
+        .pipeline-stat .ps-val { font-weight: 700; font-size: 14px; color: var(--text-primary); }
+        .pipeline-stat .ps-label { color: var(--text-muted); }
+        .pipeline-filters-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+        .filter-chip { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 16px; padding: 4px 12px; font-size: 11px; cursor: pointer; transition: all 0.15s; font-weight: 600; }
+        .filter-chip:hover { border-color: var(--accent); }
+        .filter-chip.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
+        .filter-chip.active-pass { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+        .filter-chip.active-borderline { background: var(--yellow-dim); color: var(--yellow); border-color: var(--yellow); }
+        .filter-chip.active-fail { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+        .filter-select { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 16px; padding: 4px 10px; font-size: 11px; color: var(--text-primary); }
+        .view-toggle-btn { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; color: var(--text-secondary); margin-left: auto; }
+        .view-toggle-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+        /* Pipeline list view */
+        .pipeline-list-view { width: 100%; }
+        .pipeline-list-view .stage-label { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+
+        /* History filters */
+        .history-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+        .history-filters select, .history-filters input { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text-primary); font-size: 12px; }
+
         .settings-toggle { cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--accent); font-weight: 600; margin-bottom: 8px; }
         .settings-toggle:hover { text-decoration: underline; }
         .settings-body { overflow: hidden; transition: max-height 0.3s ease; }
         .settings-body.collapsed { max-height: 0 !important; }
         .quick-form { display: grid; grid-template-columns: 2fr repeat(4, 1fr) auto; gap: 8px; align-items: end; }
-        @media (max-width: 900px) { .quick-form { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 900px) { .quick-form { grid-template-columns: 1fr 1fr; } .pipeline-board { grid-template-columns: 1fr !important; } }
         .prospect-search { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text-primary); font-size: 13px; width: 250px; }
         .prospect-search:focus { outline: none; border-color: var(--accent); }
 
@@ -1035,9 +1082,12 @@
 
             <!-- Pipeline Board -->
             <div class="card">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                     <div class="card-title" style="margin-bottom:0;">Deal Pipeline</div>
+                    <button class="view-toggle-btn" id="view-toggle-btn" onclick="togglePipelineView()">📋 List View</button>
                 </div>
+                <div id="pipeline-stats" class="pipeline-stats-bar"></div>
+                <div id="pipeline-filters" class="pipeline-filters-bar"></div>
                 <div class="pipeline-board" id="prospect-pipeline"></div>
             </div>
 
@@ -1053,9 +1103,15 @@
 
             <!-- History Table -->
             <div class="card">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
                     <div class="card-title" style="margin-bottom:0;">Deal History</div>
                     <input type="text" class="prospect-search" placeholder="Search by address..." oninput="prospectSearch=this.value;renderProspectHistory()">
+                </div>
+                <div class="history-filters">
+                    <select id="hist-filter-verdict" onchange="renderProspectHistory()"><option value="">All Verdicts</option><option>PASS</option><option>BORDERLINE</option><option>FAIL</option></select>
+                    <select id="hist-filter-stage" onchange="renderProspectHistory()"></select>
+                    <select id="hist-filter-source" onchange="renderProspectHistory()"></select>
+                    <button class="pc-action-btn" onclick="clearHistoryFilters()" style="font-size:11px;padding:4px 10px;">Clear Filters</button>
                 </div>
                 <div style="overflow-x:auto;" id="prospect-history"></div>
             </div>
@@ -2544,6 +2600,9 @@ let prospectData = { prospects: [], settings: {} };
 let currentProspect = null;
 let prospectSort = { field: 'date_added', dir: 'desc' };
 let prospectSearch = '';
+let pipelineViewMode = window.innerWidth < 768 ? 'list' : 'board';
+let pipelineFilters = { verdicts: new Set(), source: '', dateFrom: '', dateTo: '' };
+let isDragging = false;
 
 const STAGES = [
     { id: 'new_lead', label: 'New Lead', color: 'var(--accent)' },
@@ -2553,11 +2612,14 @@ const STAGES = [
     { id: 'passed', label: 'Passed', color: 'var(--text-muted)' },
     { id: 'converted', label: 'Converted', color: 'var(--green)' },
 ];
+const STAGE_COLORS = { new_lead:'#4fc3f7', analyzing:'#ffa726', offer_sent:'#ab47bc', under_contract:'#ff7043', passed:'#78909c', converted:'#66bb6a' };
+const fmtK = n => !n ? '$0' : Math.abs(n) >= 1000 ? (n<0?'-':'') + '$' + Math.round(Math.abs(n)/1000) + 'K' : fmt(n);
 
 async function loadProspects() {
     try {
         const res = await fetch('/api/prospects');
         prospectData = await res.json();
+        renderPipelineFilters();
         renderPipeline();
         renderProspectHistory();
     } catch(e) { console.error('Failed to load prospects:', e); }
@@ -2757,9 +2819,22 @@ function renderProspectResults(p) {
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ---- Optimistic stage update (no reload wait) ----
 async function updateProspectStage(id, stage) {
-    await fetch(`/api/prospects/${id}/stage`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ stage }) });
-    await loadProspects();
+    // Optimistic local update
+    const p = prospectData.prospects.find(x => x.id === id);
+    if (p) {
+        const oldStage = p.stage;
+        p.stage = stage;
+        p.stage_history = p.stage_history || [];
+        p.stage_history.push({ stage, date: new Date().toISOString().slice(0,16).replace('T',' ') });
+        renderPipelineStats();
+        renderPipeline();
+        renderProspectHistory();
+        try {
+            await fetch(`/api/prospects/${id}/stage`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ stage }) });
+        } catch(e) { p.stage = oldStage; p.stage_history.pop(); renderPipeline(); }
+    }
 }
 
 async function updateProspectNotes(id, notes) {
@@ -2771,7 +2846,7 @@ async function convertProspect(id) {
     await fetch(`/api/prospects/${id}/convert`, { method: 'POST' });
     await loadProspects();
     await loadFlips();
-    alert('Property added to your portfolio! Check the Portfolio tab.');
+    showToast('Property added to portfolio!');
 }
 
 async function deleteProspect(id) {
@@ -2785,54 +2860,378 @@ async function deleteProspect(id) {
 }
 
 async function showProspectDetail(id) {
+    if (isDragging) return;
     const p = prospectData.prospects.find(x => x.id === id);
     if (p) { currentProspect = p; renderProspectResults(p); }
 }
 
+function advanceStage(id, currentStage) {
+    const idx = STAGES.findIndex(s => s.id === currentStage);
+    if (idx >= 0 && idx < STAGES.length - 2) { // skip 'passed' and 'converted' in advance
+        const next = STAGES[idx + 1];
+        if (next.id !== 'passed' && next.id !== 'converted') updateProspectStage(id, next.id);
+        else if (idx + 2 < STAGES.length) updateProspectStage(id, STAGES[idx + 2].id);
+    }
+}
+
+function togglePipelineView() {
+    pipelineViewMode = pipelineViewMode === 'board' ? 'list' : 'board';
+    $('view-toggle-btn').innerHTML = pipelineViewMode === 'board' ? '📋 List View' : '🗂️ Board View';
+    renderPipeline();
+}
+
+function togglePipelineFilter(type, value) {
+    if (type === 'verdict') {
+        if (pipelineFilters.verdicts.has(value)) pipelineFilters.verdicts.delete(value);
+        else pipelineFilters.verdicts.add(value);
+    } else if (type === 'source') {
+        pipelineFilters.source = pipelineFilters.source === value ? '' : value;
+    }
+    renderPipelineFilters();
+    renderPipeline();
+    renderProspectHistory();
+}
+
+function clearPipelineFilters() {
+    pipelineFilters = { verdicts: new Set(), source: '', dateFrom: '', dateTo: '' };
+    renderPipelineFilters();
+    renderPipeline();
+    renderProspectHistory();
+}
+
+function getFilteredProspects() {
+    let list = [...prospectData.prospects];
+    if (pipelineFilters.verdicts.size > 0) {
+        list = list.filter(p => pipelineFilters.verdicts.has(p.metrics.flip_verdict));
+    }
+    if (pipelineFilters.source) {
+        list = list.filter(p => p.source === pipelineFilters.source);
+    }
+    return list;
+}
+
+function getDaysAgo(dateStr) {
+    if (!dateStr) return 0;
+    return Math.floor((Date.now() - new Date(dateStr)) / 86400000);
+}
+
+// ---- Pipeline Stats Bar ----
+function renderPipelineStats() {
+    const el = $('pipeline-stats');
+    if (!el) return;
+    const all = prospectData.prospects;
+    const active = all.filter(p => p.stage !== 'passed' && p.stage !== 'converted');
+    const passing = all.filter(p => p.metrics && p.metrics.flip_verdict === 'PASS');
+    const hot = all.filter(p => p.metrics && p.metrics.flip_verdict === 'PASS' && p.metrics.roi >= 20);
+    const totalValue = active.reduce((s, p) => s + (p.asking_price || 0), 0);
+    const avgProfit = passing.length ? passing.reduce((s, p) => s + p.metrics.gross_profit, 0) / passing.length : 0;
+
+    el.innerHTML = `
+        <div class="pipeline-stat"><div class="ps-val">${active.length}</div><div class="ps-label">Active Deals</div></div>
+        <div class="pipeline-stat"><div class="ps-val">${fmtK(totalValue)}</div><div class="ps-label">Pipeline Value</div></div>
+        <div class="pipeline-stat"><div class="ps-val" style="color:var(--green)">${passing.length}</div><div class="ps-label">Passing Flips</div></div>
+        <div class="pipeline-stat"><div class="ps-val">${fmtK(avgProfit)}</div><div class="ps-label">Avg Pass Profit</div></div>
+        ${hot.length ? `<div class="pipeline-stat"><div class="ps-val" style="color:#ff6b35">🔥 ${hot.length}</div><div class="ps-label">Hot Deals</div></div>` : ''}
+    `;
+}
+
+// ---- Pipeline Filter Chips ----
+function renderPipelineFilters() {
+    const el = $('pipeline-filters');
+    if (!el) return;
+    const sources = [...new Set(prospectData.prospects.map(p => p.source).filter(Boolean))];
+    const vf = pipelineFilters.verdicts;
+
+    el.innerHTML = `
+        <span style="font-size:10px;color:var(--text-muted);font-weight:600;">FILTER:</span>
+        <span class="filter-chip ${vf.has('PASS')?'active-pass':''}" onclick="togglePipelineFilter('verdict','PASS')">✓ Pass</span>
+        <span class="filter-chip ${vf.has('BORDERLINE')?'active-borderline':''}" onclick="togglePipelineFilter('verdict','BORDERLINE')">~ Borderline</span>
+        <span class="filter-chip ${vf.has('FAIL')?'active-fail':''}" onclick="togglePipelineFilter('verdict','FAIL')">✕ Fail</span>
+        ${sources.length ? `<select class="filter-select" onchange="pipelineFilters.source=this.value;renderPipeline();renderProspectHistory()">
+            <option value="">All Sources</option>
+            ${sources.map(s => `<option ${pipelineFilters.source===s?'selected':''}>${s}</option>`).join('')}
+        </select>` : ''}
+        ${(vf.size || pipelineFilters.source) ? `<span class="filter-chip" onclick="clearPipelineFilters()" style="color:var(--red)">Clear All</span>` : ''}
+    `;
+}
+
+// ---- Pipeline Rendering (Board or List) ----
 function renderPipeline() {
     const board = $('prospect-pipeline');
+    if (!board) return;
+    renderPipelineStats();
+    const filtered = getFilteredProspects();
+
+    if (pipelineViewMode === 'list') {
+        renderPipelineListView(board, filtered);
+    } else {
+        renderPipelineBoardView(board, filtered);
+    }
+
+    // Populate history filter dropdowns
+    populateHistoryFilters();
+}
+
+function renderPipelineBoardView(board, filtered) {
+    board.className = 'pipeline-board';
     board.innerHTML = STAGES.map(stage => {
-        const prospects = prospectData.prospects.filter(p => p.stage === stage.id);
-        const cards = prospects.map(p => {
-            const m = p.metrics;
-            const flipBadge = m.flip_verdict.toLowerCase();
-            return `<div class="prospect-card" onclick="showProspectDetail('${p.id}')">
-                <div class="pc-addr">${p.address}</div>
-                <div class="pc-meta">
-                    <span>Ask: <strong>${fmt(p.asking_price)}</strong></span>
-                    <span>Profit: <strong style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</strong></span>
-                </div>
-                <div class="pc-meta" style="margin-top:4px;">
-                    <span class="verdict-badge ${flipBadge}" style="font-size:9px;padding:2px 8px;">Flip: ${m.flip_verdict}</span>
-                    <span class="verdict-badge ${m.rental_verdict.toLowerCase()}" style="font-size:9px;padding:2px 8px;">Rent: ${m.rental_verdict}</span>
-                </div>
-            </div>`;
-        }).join('');
-        return `<div class="pipeline-col">
+        const prospects = filtered.filter(p => p.stage === stage.id);
+        const cards = prospects.map(p => renderPipelineCard(p, stage)).join('');
+        return `<div class="pipeline-col" data-stage="${stage.id}">
             <div class="pipeline-col-title"><span style="color:${stage.color}">${stage.label}</span><span class="count">${prospects.length}</span></div>
             ${cards || '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:16px 0;">No deals</div>'}
         </div>`;
     }).join('');
+    initDragDrop();
+}
+
+function renderPipelineCard(p, stage) {
+    const m = p.metrics;
+    const verdict = (m.flip_verdict || 'FAIL').toLowerCase();
+    const daysAgo = getDaysAgo(p.date_added);
+    const daysCls = daysAgo <= 3 ? 'fresh' : daysAgo <= 7 ? 'aging' : 'stale';
+    const isHot = m.flip_verdict === 'PASS' && m.roi >= 20;
+    const isStale = p.stage === 'new_lead' && daysAgo > 30;
+
+    return `<div class="prospect-card ${verdict}" draggable="true" data-id="${p.id}" onclick="showProspectDetail('${p.id}')">
+        <div class="pc-header">
+            <div class="pc-addr">${isHot ? '<span class="hot-icon">🔥</span> ' : ''}${p.address}${isStale ? ' <span style="font-size:9px;color:var(--red)">STALE</span>' : ''}</div>
+            <span class="days-badge ${daysCls}">${daysAgo}d</span>
+        </div>
+        <div class="pc-location">${p.city || ''}, ${p.state || 'VA'}${p.source ? ' · ' + p.source : ''}</div>
+        <div class="pc-nums">
+            <span>Ask: <strong>${fmtK(p.asking_price)}</strong></span>
+            <span>ARV: <strong>${fmtK(p.arv)}</strong></span>
+            <span>Rehab: <strong>${fmtK(p.estimated_rehab || 0)}</strong></span>
+        </div>
+        <div class="pc-nums">
+            <span>Profit: <strong style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmtK(m.gross_profit)}</strong></span>
+            <span>ROI: <strong>${pct(m.roi)}</strong></span>
+        </div>
+        <div class="pc-footer">
+            <div class="pc-verdicts">
+                <span class="verdict-badge ${verdict}" style="font-size:8px;padding:1px 6px;">${m.flip_verdict}</span>
+                <span class="verdict-badge ${(m.rental_verdict||'FAIL').toLowerCase()}" style="font-size:8px;padding:1px 6px;">${m.rental_verdict}</span>
+            </div>
+            <div class="pc-actions" onclick="event.stopPropagation()">
+                ${stage.id !== 'converted' && stage.id !== 'passed' ? `<button class="pc-action-btn" onclick="advanceStage('${p.id}','${stage.id}')" title="Next stage">&#9654;</button>` : ''}
+                ${stage.id !== 'passed' && stage.id !== 'converted' ? `<button class="pc-action-btn danger" onclick="updateProspectStage('${p.id}','passed')" title="Pass on deal">✕</button>` : ''}
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderPipelineListView(board, filtered) {
+    board.className = '';
+    const sortClick = (field) => `onclick="toggleProspectSort('${field}')"`;
+    const sortIcon = (field) => prospectSort.field === field ? (prospectSort.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
+
+    // Sort
+    let sorted = [...filtered];
+    sorted.sort((a, b) => {
+        const field = prospectSort.field;
+        let av = field.includes('.') ? (a.metrics||{})[field.split('.')[1]] : a[field];
+        let bv = field.includes('.') ? (b.metrics||{})[field.split('.')[1]] : b[field];
+        if (typeof av === 'string') return prospectSort.dir === 'asc' ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||'');
+        return prospectSort.dir === 'asc' ? (av||0) - (bv||0) : (bv||0) - (av||0);
+    });
+
+    board.innerHTML = `<div style="overflow-x:auto;"><table class="data-table pipeline-list-view">
+        <thead><tr>
+            <th>Stage</th>
+            <th style="cursor:pointer" ${sortClick('address')}>Address${sortIcon('address')}</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('asking_price')}>Ask${sortIcon('asking_price')}</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('arv')}>ARV${sortIcon('arv')}</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('estimated_rehab')}>Rehab${sortIcon('estimated_rehab')}</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('m.gross_profit')}>Profit${sortIcon('m.gross_profit')}</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('m.roi')}>ROI${sortIcon('m.roi')}</th>
+            <th>Verdict</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('date_added')}>Days${sortIcon('date_added')}</th>
+            <th>Source</th>
+            <th style="width:80px">Actions</th>
+        </tr></thead>
+        <tbody>${sorted.map(p => {
+            const m = p.metrics;
+            const stageObj = STAGES.find(s => s.id === p.stage) || STAGES[0];
+            const verdict = (m.flip_verdict||'FAIL').toLowerCase();
+            const daysAgo = getDaysAgo(p.date_added);
+            const isHot = m.flip_verdict === 'PASS' && m.roi >= 20;
+            return `<tr onclick="showProspectDetail('${p.id}')" style="cursor:pointer;border-left:3px solid ${STAGE_COLORS[p.stage]||'transparent'}">
+                <td><select class="filter-select" style="font-size:10px;padding:2px 4px;" onclick="event.stopPropagation()" onchange="event.stopPropagation();updateProspectStage('${p.id}',this.value)">
+                    ${STAGES.map(s => `<option value="${s.id}" ${p.stage===s.id?'selected':''}>${s.label}</option>`).join('')}
+                </select></td>
+                <td style="font-weight:600">${isHot?'🔥 ':''}${p.address}<br><span style="font-size:10px;color:var(--text-muted)">${p.city||''}, ${p.state||'VA'}</span></td>
+                <td style="text-align:right">${fmtK(p.asking_price)}</td>
+                <td style="text-align:right">${fmtK(p.arv)}</td>
+                <td style="text-align:right">${fmtK(p.estimated_rehab||0)}</td>
+                <td style="text-align:right;color:${m.gross_profit>=0?'var(--green)':'var(--red)'};font-weight:700">${fmtK(m.gross_profit)}</td>
+                <td style="text-align:right">${pct(m.roi)}</td>
+                <td><span class="verdict-badge ${verdict}" style="font-size:9px;padding:2px 6px">${m.flip_verdict}</span></td>
+                <td style="text-align:right"><span class="days-badge ${daysAgo<=3?'fresh':daysAgo<=7?'aging':'stale'}">${daysAgo}d</span></td>
+                <td style="font-size:10px">${p.source||'—'}</td>
+                <td style="text-align:center" onclick="event.stopPropagation()">
+                    ${p.stage!=='converted'&&p.stage!=='passed'?`<button class="pc-action-btn" onclick="advanceStage('${p.id}','${p.stage}')" title="Next">&#9654;</button>`:''}
+                    ${p.stage!=='passed'&&p.stage!=='converted'?`<button class="pc-action-btn danger" onclick="updateProspectStage('${p.id}','passed')" title="Pass">✕</button>`:''}
+                </td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table></div>`;
+}
+
+// ---- Drag and Drop ----
+function initDragDrop() {
+    let draggedId = null;
+
+    document.querySelectorAll('.prospect-card[draggable]').forEach(card => {
+        card.addEventListener('dragstart', e => {
+            isDragging = true;
+            draggedId = card.dataset.id;
+            card.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', card.dataset.id);
+        });
+        card.addEventListener('dragend', () => {
+            card.classList.remove('dragging');
+            document.querySelectorAll('.pipeline-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+            setTimeout(() => { isDragging = false; }, 50);
+        });
+    });
+
+    document.querySelectorAll('.pipeline-col').forEach(col => {
+        col.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; col.classList.add('drag-over'); });
+        col.addEventListener('dragleave', e => { if (!col.contains(e.relatedTarget)) col.classList.remove('drag-over'); });
+        col.addEventListener('drop', e => {
+            e.preventDefault();
+            col.classList.remove('drag-over');
+            const id = e.dataTransfer.getData('text/plain');
+            const newStage = col.dataset.stage;
+            if (id && newStage) updateProspectStage(id, newStage);
+        });
+    });
+
+    // Mobile touch drag
+    initTouchDrag();
+}
+
+function initTouchDrag() {
+    let touchId = null, touchClone = null, longPressTimer = null, startX = 0, startY = 0, dragStarted = false;
+
+    document.querySelectorAll('.prospect-card[draggable]').forEach(card => {
+        card.addEventListener('touchstart', e => {
+            const touch = e.touches[0];
+            startX = touch.clientX; startY = touch.clientY;
+            touchId = card.dataset.id;
+            dragStarted = false;
+            longPressTimer = setTimeout(() => {
+                dragStarted = true;
+                isDragging = true;
+                card.classList.add('dragging');
+                touchClone = card.cloneNode(true);
+                touchClone.className = 'prospect-card touch-clone';
+                touchClone.style.width = card.offsetWidth + 'px';
+                touchClone.style.left = touch.clientX - 40 + 'px';
+                touchClone.style.top = touch.clientY - 20 + 'px';
+                document.body.appendChild(touchClone);
+            }, 300);
+        }, { passive: true });
+
+        card.addEventListener('touchmove', e => {
+            const touch = e.touches[0];
+            if (!dragStarted && (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10)) {
+                clearTimeout(longPressTimer);
+                return;
+            }
+            if (!dragStarted) return;
+            e.preventDefault();
+            if (touchClone) {
+                touchClone.style.left = touch.clientX - 40 + 'px';
+                touchClone.style.top = touch.clientY - 20 + 'px';
+            }
+            // Highlight drop target
+            if (touchClone) touchClone.style.display = 'none';
+            const el = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (touchClone) touchClone.style.display = '';
+            document.querySelectorAll('.pipeline-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+            const col = el && el.closest('.pipeline-col');
+            if (col) col.classList.add('drag-over');
+        }, { passive: false });
+
+        card.addEventListener('touchend', e => {
+            clearTimeout(longPressTimer);
+            card.classList.remove('dragging');
+            if (dragStarted && touchClone) {
+                const touch = e.changedTouches[0];
+                touchClone.style.display = 'none';
+                const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                touchClone.remove();
+                touchClone = null;
+                document.querySelectorAll('.pipeline-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+                const col = el && el.closest('.pipeline-col');
+                if (col && col.dataset.stage && touchId) {
+                    updateProspectStage(touchId, col.dataset.stage);
+                }
+            }
+            dragStarted = false;
+            setTimeout(() => { isDragging = false; }, 100);
+        });
+    });
+}
+
+// ---- History Table with Filters ----
+function populateHistoryFilters() {
+    const stageSelect = $('hist-filter-stage');
+    const sourceSelect = $('hist-filter-source');
+    if (!stageSelect || !sourceSelect) return;
+
+    if (!stageSelect.options.length || stageSelect.options.length <= 1) {
+        stageSelect.innerHTML = '<option value="">All Stages</option>' + STAGES.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+    }
+    const sources = [...new Set(prospectData.prospects.map(p => p.source).filter(Boolean))];
+    if (sourceSelect.options.length <= 1) {
+        sourceSelect.innerHTML = '<option value="">All Sources</option>' + sources.map(s => `<option>${s}</option>`).join('');
+    }
+}
+
+function clearHistoryFilters() {
+    if ($('hist-filter-verdict')) $('hist-filter-verdict').value = '';
+    if ($('hist-filter-stage')) $('hist-filter-stage').value = '';
+    if ($('hist-filter-source')) $('hist-filter-source').value = '';
+    prospectSearch = '';
+    const searchInput = document.querySelector('.prospect-search');
+    if (searchInput) searchInput.value = '';
+    renderProspectHistory();
 }
 
 function renderProspectHistory() {
     const container = $('prospect-history');
+    if (!container) return;
     let prospects = [...prospectData.prospects];
 
-    // Filter
+    // Text search
     if (prospectSearch) {
         const q = prospectSearch.toLowerCase();
         prospects = prospects.filter(p => (p.address||'').toLowerCase().includes(q) || (p.city||'').toLowerCase().includes(q));
     }
+
+    // Filter dropdowns
+    const vf = $('hist-filter-verdict')?.value;
+    if (vf) prospects = prospects.filter(p => p.metrics.flip_verdict === vf);
+    const sf = $('hist-filter-stage')?.value;
+    if (sf) prospects = prospects.filter(p => p.stage === sf);
+    const srcf = $('hist-filter-source')?.value;
+    if (srcf) prospects = prospects.filter(p => p.source === srcf);
+
+    // Pipeline filter chips also apply
+    if (pipelineFilters.verdicts.size > 0) prospects = prospects.filter(p => pipelineFilters.verdicts.has(p.metrics.flip_verdict));
+    if (pipelineFilters.source) prospects = prospects.filter(p => p.source === pipelineFilters.source);
 
     // Sort
     prospects.sort((a, b) => {
         const field = prospectSort.field;
         let av = field.includes('.') ? (a.metrics||{})[field.split('.')[1]] : a[field];
         let bv = field.includes('.') ? (b.metrics||{})[field.split('.')[1]] : b[field];
-        if (typeof av === 'string') { av = av || ''; bv = bv || ''; return prospectSort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av); }
-        av = av || 0; bv = bv || 0;
-        return prospectSort.dir === 'asc' ? av - bv : bv - av;
+        if (typeof av === 'string') return prospectSort.dir === 'asc' ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||'');
+        return prospectSort.dir === 'asc' ? (av||0) - (bv||0) : (bv||0) - (av||0);
     });
 
     const sortIcon = (field) => prospectSort.field === field ? (prospectSort.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
@@ -2842,32 +3241,27 @@ function renderProspectHistory() {
         <thead><tr>
             <th style="cursor:pointer" ${sortClick('date_added')}>Date${sortIcon('date_added')}</th>
             <th style="cursor:pointer" ${sortClick('address')}>Address${sortIcon('address')}</th>
-            <th style="cursor:pointer;text-align:right" ${sortClick('asking_price')}>Asking${sortIcon('asking_price')}</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('asking_price')}>Ask${sortIcon('asking_price')}</th>
             <th style="cursor:pointer;text-align:right" ${sortClick('arv')}>ARV${sortIcon('arv')}</th>
-            <th style="cursor:pointer;text-align:right" ${sortClick('m.mao_custom')}>MAO${sortIcon('m.mao_custom')}</th>
-            <th style="cursor:pointer;text-align:right" ${sortClick('m.spread')}>Spread${sortIcon('m.spread')}</th>
-            <th style="cursor:pointer;text-align:right" ${sortClick('m.gross_profit')}>Flip Profit${sortIcon('m.gross_profit')}</th>
+            <th style="cursor:pointer;text-align:right" ${sortClick('m.gross_profit')}>Profit${sortIcon('m.gross_profit')}</th>
             <th style="cursor:pointer;text-align:right" ${sortClick('m.roi')}>ROI${sortIcon('m.roi')}</th>
-            <th style="cursor:pointer;text-align:right" ${sortClick('m.monthly_cashflow')}>Rent CF/mo${sortIcon('m.monthly_cashflow')}</th>
-            <th>Flip</th><th>Rental</th><th>Stage</th><th style="width:60px"></th>
+            <th>Verdict</th><th>Stage</th><th>Source</th><th style="width:50px"></th>
         </tr></thead>
         <tbody>${prospects.map(p => {
             const m = p.metrics;
             const stageObj = STAGES.find(s => s.id === p.stage) || STAGES[0];
+            const isHot = m.flip_verdict === 'PASS' && m.roi >= 20;
             return `<tr onclick="showProspectDetail('${p.id}')" style="cursor:pointer">
-                <td>${p.date_added||'—'}</td>
-                <td style="font-weight:600">${p.address}</td>
-                <td style="text-align:right">${fmt(p.asking_price)}</td>
-                <td style="text-align:right">${fmt(p.arv)}</td>
-                <td style="text-align:right">${fmt(m.mao_custom)}</td>
-                <td style="text-align:right;color:${m.spread>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(m.spread)}</td>
-                <td style="text-align:right;color:${m.gross_profit>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(m.gross_profit)}</td>
+                <td style="font-size:11px">${p.date_added||'—'}</td>
+                <td style="font-weight:600">${isHot?'🔥 ':''}${p.address}<br><span style="font-size:10px;color:var(--text-muted)">${p.city||''}</span></td>
+                <td style="text-align:right">${fmtK(p.asking_price)}</td>
+                <td style="text-align:right">${fmtK(p.arv)}</td>
+                <td style="text-align:right;color:${m.gross_profit>=0?'var(--green)':'var(--red)'};font-weight:700">${fmtK(m.gross_profit)}</td>
                 <td style="text-align:right">${pct(m.roi)}</td>
-                <td style="text-align:right;color:${m.monthly_cashflow>=200?'var(--green)':m.monthly_cashflow>=0?'var(--yellow)':'var(--red)'}">${fmt(m.monthly_cashflow)}</td>
                 <td><span class="verdict-badge ${m.flip_verdict.toLowerCase()}" style="font-size:9px;padding:2px 6px">${m.flip_verdict}</span></td>
-                <td><span class="verdict-badge ${m.rental_verdict.toLowerCase()}" style="font-size:9px;padding:2px 6px">${m.rental_verdict}</span></td>
-                <td style="color:${stageObj.color};font-size:11px;font-weight:600">${stageObj.label}</td>
-                <td style="text-align:center" onclick="event.stopPropagation()"><button class="btn btn-danger btn-sm" onclick="deleteProspect('${p.id}')" style="padding:2px 8px;font-size:10px;">X</button></td>
+                <td><span class="stage-label" style="background:${STAGE_COLORS[p.stage]||'var(--bg-primary)'};color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;">${stageObj.label}</span></td>
+                <td style="font-size:10px">${p.source||'—'}</td>
+                <td style="text-align:center" onclick="event.stopPropagation()"><button class="pc-action-btn danger" onclick="deleteProspect('${p.id}')" style="font-size:10px">✕</button></td>
             </tr>`;
         }).join('')}</tbody>
     </table>`;
@@ -2880,6 +3274,7 @@ function toggleProspectSort(field) {
         prospectSort.field = field;
         prospectSort.dir = 'desc';
     }
+    if (pipelineViewMode === 'list') renderPipeline();
     renderProspectHistory();
 }
 

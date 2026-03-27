@@ -1115,6 +1115,8 @@ def get_prospects():
     settings = data.get('prospect_settings', _default_prospect_settings())
     result = []
     for p in data.get('prospects', []):
+        # Backward-compat: ensure stage_history exists
+        p.setdefault('stage_history', [{'stage': p.get('stage', 'new_lead'), 'date': p.get('date_added', '')}])
         metrics = calc_prospect_metrics(p, settings)
         result.append({**p, 'metrics': metrics})
     return jsonify({'prospects': result, 'settings': settings})
@@ -1161,6 +1163,7 @@ def add_prospect():
     p.setdefault('sqft', 0)
     p.setdefault('year_built', 0)
     p.setdefault('monthly_rent_estimate', 0)
+    p.setdefault('stage_history', [{'stage': 'new_lead', 'date': datetime.now().strftime('%Y-%m-%d %H:%M')}])
     data.setdefault('prospects', []).append(p)
     save_data(data)
     settings = data.get('prospect_settings', _default_prospect_settings())
@@ -1198,6 +1201,10 @@ def update_prospect_stage(prospect_id):
     for i, p in enumerate(data.get('prospects', [])):
         if p.get('id') == prospect_id:
             data['prospects'][i]['stage'] = stage
+            data['prospects'][i].setdefault('stage_history', []).append({
+                'stage': stage,
+                'date': datetime.now().strftime('%Y-%m-%d %H:%M')
+            })
             save_data(data)
             return jsonify(data['prospects'][i])
     return jsonify({'error': 'Not found'}), 404
