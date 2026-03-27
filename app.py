@@ -142,11 +142,14 @@ def calc_property_metrics(prop):
     appraisal_fee = prop.get('appraisal_fee', 0) or 0
     commitment_fee = prop.get('commitment_fee', 0) or 0
     if purchase_settlement > 0:
-        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_holding_cost
+        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost
     else:
         total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost
+    # Draws reimburse rehab — any surplus reduces cash in deal
     draw_surplus = max(total_draws - total_rehab, 0)
-    cash_in_deal = total_cash_oop - draw_surplus if draw_surplus > 0 else total_cash_oop
+    # Also subtract draws that covered rehab (not just surplus)
+    draws_applied = min(total_draws, total_rehab)
+    cash_in_deal = total_cash_oop - draws_applied - draw_surplus
 
     # ---- Profit ----
     total_costs = purchase_price + acq_closing_cost + total_rehab + sale_commission + sale_closing + total_holding_cost
