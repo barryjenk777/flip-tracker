@@ -1124,11 +1124,35 @@ def get_prospects():
 def add_prospect():
     data = load_data()
     p = request.json
+    address = (p.get('address', '') or '').strip().lower()
+    city = (p.get('city', '') or '').strip().lower()
+
+    # If same address+city already exists, UPDATE instead of creating duplicate
+    existing = None
+    if address:
+        for i, existing_p in enumerate(data.get('prospects', [])):
+            ex_addr = (existing_p.get('address', '') or '').strip().lower()
+            ex_city = (existing_p.get('city', '') or '').strip().lower()
+            if ex_addr == address and ex_city == city:
+                existing = i
+                break
+
+    if existing is not None:
+        # Update existing prospect with new scenario numbers
+        data['prospects'][existing].update(p)
+        data['prospects'][existing]['last_analyzed'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+        save_data(data)
+        settings = data.get('prospect_settings', _default_prospect_settings())
+        metrics = calc_prospect_metrics(data['prospects'][existing], settings)
+        return jsonify({**data['prospects'][existing], 'metrics': metrics, 'updated': True})
+
+    # New prospect
     if not p.get('id'):
         slug = (p.get('address', 'prospect') or 'prospect').lower().replace(' ', '-')[:30]
         p['id'] = slug + '-' + datetime.now().strftime('%Y%m%d%H%M%S')
     p.setdefault('stage', 'new_lead')
     p.setdefault('date_added', datetime.now().strftime('%Y-%m-%d'))
+    p['last_analyzed'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     p.setdefault('verdict', None)
     p.setdefault('notes', '')
     p.setdefault('source', '')
