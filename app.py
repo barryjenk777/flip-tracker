@@ -937,12 +937,75 @@ def portfolio_summary():
     })
 
 
+def seed_22nd_street():
+    """Pre-load 1324 22nd St Chesapeake data from the spreadsheet."""
+    data = load_data()
+    for p in data['properties']:
+        if p.get('id') == '1324-22nd-st':
+            return
+    prop = {
+        'id': '1324-22nd-st',
+        'address': '1324 22nd St',
+        'city': 'Chesapeake',
+        'state': 'VA',
+        'zip': '',
+        'sqft': 0,
+        'purchase_price': 92000,
+        'arv': 280000,
+        'sale_price': 280000,
+        'acq_closing_cost': 9546.30,
+        'purchase_settlement': 27127.16,
+        'emd': 5000,
+        'appraisal_fee': 250,
+        'commitment_fee': 0,
+        'purchase_date': None,
+        'estimated_sale_date': None,
+        'sale_date': None,
+        'listing_date': None,
+        'rehab_budget': 38048,
+        'lender_rehab_budget': 83000,
+        'sale_commission_pct': 4.0,
+        'sale_closing_cost_pct': 1.5,
+        'contingency_pct': 15.0,
+        'partner_split_pct': 50.0,
+        'status': 'active',
+        'notes': 'Insurance paid at closing: $2,376.87 (reimbursable). Budget with Devin: $83,000. No bank draws received yet. No mortgage or utility payments.',
+        'holding_costs': {
+            'monthly_mortgage': 0,
+            'monthly_insurance': 0,
+            'monthly_taxes': 0,
+            'monthly_utilities': 0,
+            'monthly_hoa': 0,
+            'monthly_lawn': 0,
+            'monthly_other': 0,
+        },
+        'expenses': [
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 1', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 2', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 3', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 4', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 5', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 6', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 7', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 8', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Contracting', 'description': 'Draw 9', 'amount': 3500, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'SRS Building Products', 'description': 'Building Materials', 'amount': 4845.38, 'category': 'Building Materials', 'is_credit': False},
+            {'date': '', 'vendor': 'City of Chesapeake', 'description': 'Permits', 'amount': 1202.58, 'category': 'Permits', 'is_credit': False},
+        ],
+        'draws': [],
+        'mortgage_payments': [],
+    }
+    data['properties'].append(prop)
+    save_data(data)
+
+
 # ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
 seed_willowbrook()
 seed_second_property()
 seed_third_property()
+seed_22nd_street()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))
