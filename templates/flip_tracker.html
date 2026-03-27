@@ -486,9 +486,9 @@
         }
         .timeline-line.done { background: var(--green); }
         .timeline-line.future { background: var(--border); }
-        .timeline-date { font-size: 10px; color: var(--text-muted); }
-        .timeline-date.editable-date { cursor: pointer; }
-        .timeline-date.editable-date:hover { color: var(--accent); text-decoration: underline; }
+        .timeline-date { font-size: 12px; color: var(--text-muted); padding: 4px 8px; }
+        .timeline-date.editable-date { cursor: pointer; border-radius: 4px; border: 1px dashed transparent; }
+        .timeline-date.editable-date:hover { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
         .timeline-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
 
         /* ---- Draw Tracker ---- */
@@ -1663,11 +1663,12 @@ function renderTimeline(prop, m) {
         const lineClass = p.done ? 'done' : 'future';
         const editable = p.field ? ' editable-date' : '';
         const onclick = p.field ? ` onclick="editTimelineDate(this,'${p.field}','${(p.date||'').replace(/'/g,"\\'")}')"` : '';
+        const dateDisplay = p.field ? (p.date || 'click to set') : (p.date || '—');
         return `${i > 0 ? `<div class="timeline-line ${lineClass}"></div>` : ''}
             <div class="timeline-node">
                 <div class="timeline-dot ${dotClass}"></div>
                 <div class="timeline-label">${p.label}</div>
-                <div class="timeline-date${editable}"${onclick}>${p.date || '—'}</div>
+                <div class="timeline-date${editable}"${onclick}>${dateDisplay}</div>
             </div>`;
     }).join('') + '</div>';
 }
