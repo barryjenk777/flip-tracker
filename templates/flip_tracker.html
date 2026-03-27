@@ -535,6 +535,42 @@
         ::-webkit-scrollbar-track { background: var(--bg-primary); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+        /* ---- Tax & P&L Tab ---- */
+        .cd-upload-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .cd-upload-zone:hover { border-color: var(--accent); background: rgba(79,195,247,0.05); }
+        .cd-upload-zone.uploaded { border-color: var(--green); border-style: solid; }
+        .cd-zone-icon { font-size: 28px; margin-bottom: 8px; }
+        .cd-zone-label { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+        .cd-zone-status { font-size: 11px; color: var(--text-muted); }
+        .pnl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .pnl-table td { padding: 4px 8px; }
+        .pnl-table .pnl-section { font-weight: 800; font-size: 14px; padding-top: 16px; color: var(--accent); border-bottom: 1px solid var(--border); }
+        .pnl-table .pnl-total { font-weight: 700; border-top: 2px solid var(--border); }
+        .pnl-table .pnl-grand { font-weight: 800; font-size: 15px; border-top: 3px double var(--accent); color: var(--green); }
+        .pnl-table .pnl-sub { padding-left: 24px; color: var(--text-secondary); font-size: 12px; }
+        .pnl-table .pnl-subsub { padding-left: 48px; color: var(--text-muted); font-size: 11px; }
+        .pnl-table .pnl-amount { text-align: right; font-family: 'SF Mono', 'Consolas', monospace; white-space: nowrap; }
+        .pnl-table .pnl-negative { color: var(--red); }
+        .pnl-table .pnl-positive { color: var(--green); }
+        .pnl-header { background: var(--bg-secondary); padding: 16px; border-radius: 12px; margin-bottom: 16px; }
+        .pnl-header h2 { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+        .pnl-header .pnl-meta { font-size: 12px; color: var(--text-muted); }
+        .pnl-disclaimer { font-size: 10px; color: var(--text-muted); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+        @media print {
+            body { background: white !important; color: black !important; }
+            .app-header, .tab-bar, .header-actions, #cd-upload-section,
+            .btn, #tax-selector, #tax-view-mode, .fab, .bottom-sheet-overlay,
+            .modal-overlay { display: none !important; }
+            .card { background: white !important; border: 1px solid #ddd !important; box-shadow: none !important; }
+            .pnl-table .pnl-section { color: #333 !important; }
+            .pnl-table .pnl-amount { color: black !important; }
+            .pnl-table .pnl-positive { color: #006600 !important; }
+            .pnl-table .pnl-negative { color: #cc0000 !important; }
+            .tab-content { display: none !important; }
+            #tab-tax { display: block !important; }
+        }
+
         /* ---- Deal Analyzer ---- */
         .verdict-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
         .verdict-badge.pass { background: var(--green-dim); color: var(--green); border: 1px solid rgba(102,187,106,0.4); }
@@ -686,6 +722,7 @@
             <button class="tab-btn" onclick="switchTab('property')">Property Detail</button>
             <button class="tab-btn" onclick="switchTab('expenses')">Expenses & Draws</button>
             <button class="tab-btn" onclick="switchTab('analysis')">Deal Analysis</button>
+            <button class="tab-btn" onclick="switchTab('tax')">Tax & P&L</button>
             <button class="tab-btn" onclick="switchTab('prospects')">Deal Analyzer</button>
         </div>
 
@@ -859,6 +896,64 @@
             </div>
         </div>
     </div>
+
+        <!-- ===== TAX & P&L TAB ===== -->
+        <div class="tab-content" id="tab-tax">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div id="tax-selector"></div>
+                    <select id="tax-view-mode" onchange="renderTaxPnl()" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);padding:8px 12px;border-radius:8px;font-size:14px;">
+                        <option value="property">Individual Property P&L</option>
+                        <option value="annual">2026 Annual Summary</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary" onclick="exportPnlPdf()">📄 Export PDF</button>
+                    <button class="btn btn-secondary" onclick="exportPnlCsv()">📊 Export CSV</button>
+                    <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+                </div>
+            </div>
+
+            <!-- Closing Disclosure Upload Section -->
+            <div class="card" id="cd-upload-section">
+                <div class="card-title">Closing Disclosures</div>
+                <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Upload your Closing Disclosure PDFs to auto-extract itemized closing costs for tax reporting.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="cd-uploads-grid">
+                    <div id="cd-purchase-zone" class="cd-upload-zone" onclick="initCdUpload('purchase')">
+                        <div class="cd-zone-icon">📋</div>
+                        <div class="cd-zone-label">Purchase Closing Disclosure</div>
+                        <div class="cd-zone-status" id="cd-purchase-status">Click to upload PDF</div>
+                    </div>
+                    <div id="cd-sale-zone" class="cd-upload-zone" onclick="initCdUpload('sale')">
+                        <div class="cd-zone-icon">📋</div>
+                        <div class="cd-zone-label">Sale Closing Disclosure</div>
+                        <div class="cd-zone-status" id="cd-sale-status">Click to upload PDF</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- P&L Display -->
+            <div id="pnl-content" class="card"></div>
+        </div>
+
+        <!-- Closing Disclosure Review Modal -->
+        <div class="modal-overlay" id="modal-cd-review" onclick="if(event.target===this)this.style.display='none'">
+            <div class="modal" style="max-width:700px;max-height:80vh;overflow-y:auto;">
+                <h3 id="cd-review-title">Review Parsed Closing Disclosure</h3>
+                <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Review and correct any line items below, then confirm to save.</p>
+                <div id="cd-review-summary" style="margin-bottom:12px;"></div>
+                <table class="data-table" id="cd-review-table">
+                    <thead><tr><th>Description</th><th style="text-align:right">Amount</th><th>Tax Category</th><th></th></tr></thead>
+                    <tbody id="cd-review-body"></tbody>
+                </table>
+                <div style="display:flex;gap:8px;margin-top:16px;">
+                    <button class="btn" onclick="addCdLineItem()">+ Add Item</button>
+                    <div style="flex:1"></div>
+                    <button class="btn btn-secondary" onclick="$('modal-cd-review').style.display='none'">Cancel</button>
+                    <button class="btn" id="cd-confirm-btn" onclick="confirmCdData()">Confirm & Save</button>
+                </div>
+            </div>
+        </div>
 
         <!-- ===== DEAL ANALYZER TAB (mirrors partner's P&L Worksheet) ===== -->
         <div class="tab-content" id="tab-prospects">
@@ -1168,7 +1263,7 @@ async function apiPost(url, body) {
 
 // ---- Tab switching ----
 function switchTab(name) {
-    const tabMap = { portfolio: 'Portfolio Overview', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', prospects: 'Deal Analyzer' };
+    const tabMap = { portfolio: 'Portfolio Overview', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', tax: 'Tax & P&L', prospects: 'Deal Analyzer' };
     const target = tabMap[name] || '';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent === target));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === 'tab-'+name));
@@ -1467,9 +1562,11 @@ function renderAll() {
     renderPropertySelector('property-selector');
     renderPropertySelector('expense-selector');
     renderPropertySelector('analysis-selector');
+    renderPropertySelector('tax-selector');
     renderPropertyDetail();
     renderExpenses();
     renderAnalysis();
+    renderTaxPnl();
 }
 
 // ---- PORTFOLIO TAB ----
@@ -2118,6 +2215,323 @@ function renderForgottenCosts(prop) {
             ${!c.tracked ? '<span style="margin-left:auto;font-size:11px;color:var(--red);font-weight:600;">NOT TRACKED</span>' : '<span style="margin-left:auto;font-size:11px;color:var(--green);font-weight:600;">TRACKED</span>'}
         </div>
     `).join('');
+}
+
+// ---- TAX & P&L TAB ----
+let _cdReviewData = { type: 'purchase', items: [] };
+
+async function renderTaxPnl() {
+    const mode = $('tax-view-mode') ? $('tax-view-mode').value : 'property';
+    const content = $('pnl-content');
+    if (!content) return;
+
+    if (mode === 'annual') {
+        try {
+            const res = await fetch('/api/flips/pnl/annual?year=2026');
+            const data = await res.json();
+            renderAnnualPnl(data);
+        } catch(e) { content.innerHTML = '<div style="color:var(--text-muted)">Error loading annual P&L.</div>'; }
+        if ($('cd-upload-section')) $('cd-upload-section').style.display = 'none';
+    } else {
+        const prop = getSelectedProperty('tax-selector');
+        if (!prop) { content.innerHTML = '<div style="color:var(--text-muted)">Select a property.</div>'; return; }
+        try {
+            const res = await fetch(`/api/flips/${prop.id}/pnl`);
+            const pnl = await res.json();
+            renderPropertyPnl(pnl, prop);
+            renderCdStatus(prop);
+        } catch(e) { content.innerHTML = '<div style="color:var(--text-muted)">Error loading P&L.</div>'; }
+        if ($('cd-upload-section')) $('cd-upload-section').style.display = '';
+    }
+}
+
+function getSelectedProperty(selectorId) {
+    const sel = document.querySelector(`#${selectorId} select`);
+    if (!sel) return flipData.properties[0] || null;
+    const id = sel.value;
+    return flipData.properties.find(p => p.id === id) || flipData.properties[0] || null;
+}
+
+function renderPropertyPnl(pnl, prop) {
+    const c = $('pnl-content');
+    const f = (v) => v >= 0 ? `$${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `-$${Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    const statusLabel = pnl.status === 'sold' ? '🟢 SOLD' : pnl.status === 'listed' ? '🟡 LISTED' : '🔵 ACTIVE';
+
+    let html = `
+    <div class="pnl-header">
+        <h2>Profit & Loss Statement</h2>
+        <div class="pnl-meta">${prop.address} — ${prop.city}, ${prop.state} &nbsp;|&nbsp; ${statusLabel}</div>
+        <div class="pnl-meta">Purchased: ${pnl.purchase_date || 'N/A'} &nbsp;|&nbsp; Sold: ${pnl.sale_date || 'N/A'} &nbsp;|&nbsp; Days Held: ${pnl.days_held || 0}</div>
+        ${pnl.has_closing_disclosure_purchase ? '<div class="pnl-meta" style="color:var(--green)">✅ Purchase Closing Disclosure uploaded — itemized costs included</div>' : ''}
+        ${pnl.has_closing_disclosure_sale ? '<div class="pnl-meta" style="color:var(--green)">✅ Sale Closing Disclosure uploaded — itemized costs included</div>' : ''}
+    </div>
+    <table class="pnl-table">
+        <tr><td class="pnl-section" colspan="2">GROSS INCOME</td><td class="pnl-section"></td></tr>
+        <tr><td class="pnl-sub">Sale Price</td><td></td><td class="pnl-amount">${f(pnl.sale_price)}</td></tr>`;
+    if (pnl.seller_concessions > 0) {
+        html += `<tr><td class="pnl-sub">Less: Seller Concessions</td><td></td><td class="pnl-amount pnl-negative">-${f(pnl.seller_concessions)}</td></tr>`;
+    }
+    html += `<tr><td class="pnl-sub pnl-total">Net Sale Proceeds</td><td></td><td class="pnl-amount pnl-total">${f(pnl.net_sale_proceeds)}</td></tr>
+
+        <tr><td class="pnl-section" colspan="2">COST OF GOODS SOLD (Capitalized to Basis)</td><td class="pnl-section"></td></tr>
+        <tr><td class="pnl-sub">Purchase Price</td><td></td><td class="pnl-amount">${f(pnl.purchase_price)}</td></tr>
+        <tr><td class="pnl-sub">Acquisition Closing Costs</td><td></td><td class="pnl-amount">${f(pnl.acq_closing_total)}</td></tr>`;
+
+    // Itemized closing costs from CD
+    if (pnl.acq_closing_items && pnl.acq_closing_items.length) {
+        pnl.acq_closing_items.forEach(item => {
+            html += `<tr><td class="pnl-subsub">${item.description}</td><td style="font-size:10px;color:var(--text-muted)">${item.tax_category || ''}</td><td class="pnl-amount" style="font-size:11px">${f(item.amount)}</td></tr>`;
+        });
+    }
+
+    html += `<tr><td class="pnl-sub">Renovation Costs</td><td></td><td class="pnl-amount">${f(pnl.renovation_total)}</td></tr>`;
+    for (const [label, amt] of Object.entries(pnl.renovation_subtotals || {})) {
+        html += `<tr><td class="pnl-subsub">${label}</td><td></td><td class="pnl-amount" style="font-size:11px">${f(amt)}</td></tr>`;
+    }
+    if (pnl.total_credits > 0) {
+        html += `<tr><td class="pnl-subsub">Less: Credits/Returns</td><td></td><td class="pnl-amount pnl-negative" style="font-size:11px">-${f(pnl.total_credits)}</td></tr>`;
+    }
+
+    html += `<tr><td class="pnl-sub">Holding Costs (Capitalized)</td><td style="font-size:10px;color:var(--text-muted)">IRC §263A</td><td class="pnl-amount">${f(pnl.holding_total)}</td></tr>`;
+    for (const [label, amt] of Object.entries(pnl.holding_breakdown || {})) {
+        html += `<tr><td class="pnl-subsub">${label}</td><td></td><td class="pnl-amount" style="font-size:11px">${f(amt)}</td></tr>`;
+    }
+
+    html += `<tr><td class="pnl-sub pnl-total">TOTAL COGS</td><td></td><td class="pnl-amount pnl-total">${f(pnl.total_cogs)}</td></tr>
+
+        <tr><td class="pnl-section" colspan="2">SELLING COSTS</td><td class="pnl-section"></td></tr>
+        <tr><td class="pnl-sub">RE Commissions (${pnl.commission_pct}%)</td><td></td><td class="pnl-amount">${f(pnl.commission)}</td></tr>
+        <tr><td class="pnl-sub">Sale Settlement (${pnl.sale_closing_pct}%)</td><td></td><td class="pnl-amount">${f(pnl.sale_closing)}</td></tr>`;
+
+    if (pnl.selling_expenses && pnl.selling_expenses.length) {
+        pnl.selling_expenses.forEach(se => {
+            html += `<tr><td class="pnl-subsub">${se.description}</td><td style="font-size:10px">${se.vendor}</td><td class="pnl-amount" style="font-size:11px">${f(se.amount)}</td></tr>`;
+        });
+    }
+
+    // Sale CD items
+    if (pnl.sale_closing_items && pnl.sale_closing_items.length) {
+        pnl.sale_closing_items.forEach(item => {
+            html += `<tr><td class="pnl-subsub">${item.description}</td><td style="font-size:10px;color:var(--text-muted)">${item.tax_category || ''}</td><td class="pnl-amount" style="font-size:11px">${f(item.amount)}</td></tr>`;
+        });
+    }
+
+    html += `<tr><td class="pnl-sub pnl-total">TOTAL SELLING COSTS</td><td></td><td class="pnl-amount pnl-total">${f(pnl.total_selling)}</td></tr>
+
+        <tr><td style="height:8px" colspan="3"></td></tr>
+        <tr><td class="pnl-total" style="font-size:14px">TOTAL ALL COSTS</td><td></td><td class="pnl-amount pnl-total pnl-negative" style="font-size:14px">${f(pnl.total_costs)}</td></tr>
+        <tr><td style="height:12px" colspan="3"></td></tr>
+
+        <tr><td class="pnl-grand">NET PROFIT (LOSS)</td><td></td><td class="pnl-amount pnl-grand ${pnl.net_profit >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.net_profit)}</td></tr>
+        <tr><td class="pnl-sub" style="color:var(--text-muted)">Est. Self-Employment Tax (${pnl.se_tax_rate}%)</td><td style="font-size:10px;color:var(--text-muted)">12.4% SS + 2.9% Medicare</td><td class="pnl-amount pnl-negative" style="font-size:12px">-${f(pnl.se_tax)}</td></tr>
+        <tr><td class="pnl-sub pnl-total">Net After SE Tax</td><td></td><td class="pnl-amount pnl-total ${pnl.net_after_se >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.net_after_se)}</td></tr>
+
+        <tr><td style="height:12px" colspan="3"></td></tr>
+        <tr><td class="pnl-section" colspan="2">PARTNERSHIP SPLIT</td><td class="pnl-section"></td></tr>
+        <tr><td class="pnl-sub">Partner A (${pnl.partner_split_pct}%)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_a_share)}</td></tr>
+        <tr><td class="pnl-sub">Partner B (${100 - pnl.partner_split_pct}%)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_b_share)}</td></tr>
+    </table>
+    <div class="pnl-disclaimer">
+        <strong>Tax Note:</strong> House flips are treated as dealer property (inventory) under IRS rules. All costs are capitalized to basis and deducted as COGS when sold.
+        Profits are ordinary income subject to self-employment tax. This is not tax advice — consult your CPA.<br>
+        Generated ${new Date().toLocaleDateString()}
+    </div>`;
+
+    c.innerHTML = html;
+}
+
+function renderAnnualPnl(data) {
+    const c = $('pnl-content');
+    const f = (v) => v >= 0 ? `$${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `-$${Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    const t = data.totals;
+
+    let rows = data.properties.map(p => `
+        <tr>
+            <td style="font-weight:600">${p.address}</td>
+            <td class="pnl-amount">${f(p.net_sale_proceeds)}</td>
+            <td class="pnl-amount">${f(p.total_cogs)}</td>
+            <td class="pnl-amount">${f(p.total_selling)}</td>
+            <td class="pnl-amount" style="font-weight:700;color:${p.net_profit >= 0 ? 'var(--green)' : 'var(--red)'}">${f(p.net_profit)}</td>
+            <td class="pnl-amount">${f(p.se_tax)}</td>
+            <td class="pnl-amount pnl-positive">${f(p.partner_a_share)}</td>
+        </tr>
+    `).join('');
+
+    c.innerHTML = `
+    <div class="pnl-header">
+        <h2>${data.year} Annual Profit & Loss Summary</h2>
+        <div class="pnl-meta">${data.property_count} properties</div>
+    </div>
+
+    <div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:20px;">
+        <div class="stat-card green"><div class="stat-label">Total Net Profit</div><div class="stat-value">${fmt(t.net_profit)}</div></div>
+        <div class="stat-card highlight"><div class="stat-label">Your Split (50%)</div><div class="stat-value">${fmt(t.partner_a_share)}</div></div>
+        <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value">${fmt(t.net_sale_proceeds)}</div></div>
+        <div class="stat-card"><div class="stat-label">Total COGS</div><div class="stat-value">${fmt(t.total_cogs)}</div></div>
+        <div class="stat-card"><div class="stat-label">Total Selling</div><div class="stat-value">${fmt(t.total_selling)}</div></div>
+        <div class="stat-card red"><div class="stat-label">Est. SE Tax</div><div class="stat-value">${fmt(t.se_tax)}</div></div>
+    </div>
+
+    <table class="data-table">
+        <thead><tr>
+            <th>Property</th><th style="text-align:right">Net Revenue</th><th style="text-align:right">COGS</th>
+            <th style="text-align:right">Selling</th><th style="text-align:right">Net Profit</th>
+            <th style="text-align:right">SE Tax</th><th style="text-align:right">Your Split</th>
+        </tr></thead>
+        <tbody>
+            ${rows}
+            <tr style="border-top:2px solid var(--accent);font-weight:700;background:var(--bg-primary);">
+                <td>TOTALS</td>
+                <td class="pnl-amount">${f(t.net_sale_proceeds)}</td>
+                <td class="pnl-amount">${f(t.total_cogs)}</td>
+                <td class="pnl-amount">${f(t.total_selling)}</td>
+                <td class="pnl-amount" style="color:var(--green)">${f(t.net_profit)}</td>
+                <td class="pnl-amount">${f(t.se_tax)}</td>
+                <td class="pnl-amount" style="color:var(--accent)">${f(t.partner_a_share)}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="pnl-disclaimer">
+        <strong>Schedule C Note:</strong> Each property's costs are capitalized as COGS. Net profit is ordinary income subject to 15.3% self-employment tax.
+        Export to CSV or PDF to provide to your bookkeeper/CPA for tax filing.<br>
+        Generated ${new Date().toLocaleDateString()}
+    </div>`;
+}
+
+function renderCdStatus(prop) {
+    const cdP = prop.closing_disclosure_purchase;
+    const cdS = prop.closing_disclosure_sale;
+    const pZone = $('cd-purchase-zone');
+    const sZone = $('cd-sale-zone');
+    if (!pZone || !sZone) return;
+
+    if (cdP && cdP.line_items && cdP.line_items.length) {
+        pZone.classList.add('uploaded');
+        $('cd-purchase-status').innerHTML = `✅ ${cdP.filename || 'Uploaded'} (${cdP.upload_date}) — ${cdP.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span>`;
+    } else {
+        pZone.classList.remove('uploaded');
+        $('cd-purchase-status').textContent = 'Click to upload PDF';
+    }
+
+    if (cdS && cdS.line_items && cdS.line_items.length) {
+        sZone.classList.add('uploaded');
+        $('cd-sale-status').innerHTML = `✅ ${cdS.filename || 'Uploaded'} (${cdS.upload_date}) — ${cdS.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span>`;
+    } else {
+        sZone.classList.remove('uploaded');
+        $('cd-sale-status').textContent = 'Click to upload PDF';
+    }
+}
+
+function initCdUpload(type) {
+    const prop = getSelectedProperty('tax-selector');
+    if (!prop) { showToast('Select a property first', 'warning'); return; }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', type);
+        try {
+            const res = await fetch(`/api/flips/${prop.id}/closing-disclosure`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.error && !data.line_items.length) {
+                showToast('Could not parse PDF: ' + data.error, 'error');
+                return;
+            }
+            // Show review modal
+            _cdReviewData = { type, propId: prop.id, items: data.line_items || [] };
+            showCdReviewModal(data, type);
+        } catch(e) { showToast('Upload failed', 'error'); }
+    };
+    input.click();
+}
+
+function showCdReviewModal(data, type) {
+    $('cd-review-title').textContent = `Review ${type === 'purchase' ? 'Purchase' : 'Sale'} Closing Disclosure`;
+    $('cd-review-summary').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+            <div class="stat-card" style="padding:8px"><div class="stat-label" style="font-size:10px">Loan Amount</div><div style="font-weight:700">${fmt(data.loan_amount || 0)}</div></div>
+            <div class="stat-card" style="padding:8px"><div class="stat-label" style="font-size:10px">Interest Rate</div><div style="font-weight:700">${(data.interest_rate || 0).toFixed(2)}%</div></div>
+            <div class="stat-card" style="padding:8px"><div class="stat-label" style="font-size:10px">Cash to Close</div><div style="font-weight:700">${fmt(data.cash_to_close || 0)}</div></div>
+        </div>`;
+
+    const body = $('cd-review-body');
+    body.innerHTML = '';
+    (data.line_items || []).forEach((item, i) => {
+        body.innerHTML += cdReviewRow(item, i);
+    });
+    $('modal-cd-review').style.display = 'flex';
+}
+
+function cdReviewRow(item, idx) {
+    return `<tr id="cd-row-${idx}">
+        <td><input type="text" value="${item.description}" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:12px" data-field="description" data-idx="${idx}"></td>
+        <td style="text-align:right"><input type="number" step="0.01" value="${item.amount}" style="width:90px;text-align:right;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:12px" data-field="amount" data-idx="${idx}"></td>
+        <td><select style="background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:4px;border-radius:4px;font-size:11px;width:100%" data-field="tax_category" data-idx="${idx}">
+            ${['Loan Costs - Capitalized','Title & Settlement - Capitalized','Gov Fees - Capitalized','Insurance - Capitalized','Property Tax - Capitalized','Prepaid Interest - Capitalized','Escrow - Capitalized','Inspection - Capitalized','HOA - Capitalized','Other - Review Required']
+            .map(c => `<option ${c === item.tax_category ? 'selected' : ''}>${c}</option>`).join('')}
+        </select></td>
+        <td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px" onclick="document.getElementById('cd-row-${idx}').remove()">✕</button></td>
+    </tr>`;
+}
+
+function addCdLineItem() {
+    const body = $('cd-review-body');
+    const idx = body.children.length;
+    body.innerHTML += cdReviewRow({ description: '', amount: 0, tax_category: 'Other - Review Required' }, idx);
+}
+
+async function confirmCdData() {
+    const rows = document.querySelectorAll('#cd-review-body tr');
+    const items = [];
+    rows.forEach(row => {
+        const desc = row.querySelector('[data-field="description"]');
+        const amt = row.querySelector('[data-field="amount"]');
+        const cat = row.querySelector('[data-field="tax_category"]');
+        if (desc && amt) {
+            items.push({
+                description: desc.value,
+                amount: parseFloat(amt.value) || 0,
+                tax_category: cat ? cat.value : 'Other',
+            });
+        }
+    });
+
+    try {
+        await fetch(`/api/flips/${_cdReviewData.propId}/closing-disclosure`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: _cdReviewData.type, line_items: items }),
+        });
+        $('modal-cd-review').style.display = 'none';
+        showToast(`${_cdReviewData.type === 'purchase' ? 'Purchase' : 'Sale'} Closing Disclosure saved!`);
+        await loadFlips();
+        renderTaxPnl();
+    } catch(e) { showToast('Save failed', 'error'); }
+}
+
+function exportPnlPdf() {
+    const mode = $('tax-view-mode') ? $('tax-view-mode').value : 'property';
+    if (mode === 'annual') {
+        window.open('/api/flips/pnl/annual/pdf?year=2026');
+    } else {
+        const prop = getSelectedProperty('tax-selector');
+        if (prop) window.open(`/api/flips/${prop.id}/pnl/pdf`);
+    }
+}
+
+function exportPnlCsv() {
+    const mode = $('tax-view-mode') ? $('tax-view-mode').value : 'property';
+    if (mode === 'annual') {
+        window.open('/api/flips/pnl/annual/csv?year=2026');
+    } else {
+        const prop = getSelectedProperty('tax-selector');
+        if (prop) window.open(`/api/flips/${prop.id}/pnl/csv`);
+    }
 }
 
 // ---- DEAL ANALYZER TAB ----

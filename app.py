@@ -4,12 +4,72 @@ Flip Tracker - Professional Real Estate Flip Investment Dashboard
 Standalone Flask application for tracking renovation flip investments.
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response, send_file
 import json
 import os
+import base64
+import io
+import re
+import csv
 from datetime import datetime
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
+
+# ---------------------------------------------------------------------------
+# Tax categorization for IRS reporting (flips = dealer property = inventory)
+# All costs capitalized to basis under IRC Section 263A
+# ---------------------------------------------------------------------------
+EXPENSE_TAX_MAP = {
+    'Labor - Plumbing': ('Renovation - Labor', 'cogs'),
+    'Labor - Electrical': ('Renovation - Labor', 'cogs'),
+    'Labor - HVAC': ('Renovation - Labor', 'cogs'),
+    'Labor - Kitchen': ('Renovation - Labor', 'cogs'),
+    'Labor - General': ('Renovation - Labor', 'cogs'),
+    'Building Materials': ('Renovation - Materials', 'cogs'),
+    'Flooring': ('Renovation - Materials', 'cogs'),
+    'Paint': ('Renovation - Materials', 'cogs'),
+    'Roofing': ('Renovation - Materials', 'cogs'),
+    'Windows & Doors': ('Renovation - Materials', 'cogs'),
+    'Appliances': ('Renovation - Materials', 'cogs'),
+    'Landscaping': ('Renovation - Other', 'cogs'),
+    'Permits': ('Renovation - Permits/Fees', 'cogs'),
+    'Dumpster': ('Renovation - Other', 'cogs'),
+    'Repairs - Pest': ('Renovation - Other', 'cogs'),
+    'Repairs - Foundation': ('Renovation - Other', 'cogs'),
+    'Utilities': ('Holding Costs', 'cogs'),
+    'Marketing': ('Selling Costs', 'selling'),
+    'Staging': ('Selling Costs', 'selling'),
+    'Other': ('Renovation - Other', 'cogs'),
+}
+
+# Closing Disclosure line item tax classification keywords
+CD_TAX_KEYWORDS = {
+    'origination': 'Loan Costs - Capitalized',
+    'discount': 'Loan Costs - Capitalized',
+    'processing': 'Loan Costs - Capitalized',
+    'underwriting': 'Loan Costs - Capitalized',
+    'application': 'Loan Costs - Capitalized',
+    'appraisal': 'Loan Costs - Capitalized',
+    'credit report': 'Loan Costs - Capitalized',
+    'flood': 'Loan Costs - Capitalized',
+    'title': 'Title & Settlement - Capitalized',
+    'settlement': 'Title & Settlement - Capitalized',
+    'closing fee': 'Title & Settlement - Capitalized',
+    'survey': 'Title & Settlement - Capitalized',
+    'pest': 'Inspection - Capitalized',
+    'inspection': 'Inspection - Capitalized',
+    'recording': 'Gov Fees - Capitalized',
+    'transfer tax': 'Gov Fees - Capitalized',
+    'prepaid interest': 'Prepaid Interest - Capitalized',
+    'homeowner': 'Insurance - Capitalized',
+    'hazard': 'Insurance - Capitalized',
+    'insurance': 'Insurance - Capitalized',
+    'property tax': 'Property Tax - Capitalized',
+    'tax': 'Property Tax - Capitalized',
+    'escrow': 'Escrow - Capitalized',
+    'hoa': 'HOA - Capitalized',
+}
 
 # ---------------------------------------------------------------------------
 # Data persistence (JSON file, with in-memory fallback for Railway)
@@ -278,6 +338,278 @@ def calc_property_metrics(prop):
         'days_until_zero_profit': days_until_zero_profit,
         'flags': flags,
     }
+
+
+# ---------------------------------------------------------------------------
+# P&L Calculator for CPA/Bookkeeper tax reporting
+# ---------------------------------------------------------------------------
+def calc_pnl(prop, metrics):
+    """Generate tax-ready P&L structure from property data.
+    For flips (dealer property), all costs are capitalized to basis (COGS).
+    Profits are ordinary income subject to self-employment tax.
+    """
+    cd_purchase = prop.get('closing_disclosure_purchase', {})
+    cd_sale = prop.get('closing_disclosure_sale', {})
+
+    # ---- GROSS INCOME ----
+    sale_price = prop.get('sale_price', 0) or metrics['effective_sale']
+    seller_concessions = 0
+    if cd_sale and cd_sale.get('line_items'):
+        for item in cd_sale['line_items']:
+            if 'concession' in item.get('description', '').lower():
+                seller_concessions += item.get('amount', 0)
+    net_sale_proceeds = sale_price - seller_concessions
+
+    # ---- COGS: Acquisition ----
+    purchase_price = metrics['purchase_price']
+
+    # Acquisition closing costs — itemized from CD or lump sum
+    if cd_purchase and cd_purchase.get('line_items'):
+        acq_closing_items = cd_purchase['line_items']
+        acq_closing_total = sum(item.get('amount', 0) for item in acq_closing_items)
+    else:
+        acq_closing_items = []
+        acq_closing_total = metrics['acq_closing_cost']
+
+    # ---- COGS: Renovation — grouped by tax category ----
+    expenses = prop.get('expenses', [])
+    renovation_groups = {}  # {pnl_label: [expenses]}
+    selling_expenses = []
+    for e in expenses:
+        if e.get('is_credit'):
+            continue
+        cat = e.get('category', 'Other')
+        pnl_label, tax_type = EXPENSE_TAX_MAP.get(cat, ('Renovation - Other', 'cogs'))
+        if tax_type == 'selling':
+            selling_expenses.append(e)
+        else:
+            renovation_groups.setdefault(pnl_label, []).append(e)
+
+    renovation_subtotals = {}
+    for label, exps in renovation_groups.items():
+        renovation_subtotals[label] = sum(e.get('amount', 0) for e in exps)
+    renovation_total = sum(renovation_subtotals.values())
+
+    # Credits
+    total_credits = sum(e.get('amount', 0) for e in expenses if e.get('is_credit'))
+    renovation_total -= total_credits
+
+    # ---- COGS: Holding Costs (capitalized for flips) ----
+    holding = prop.get('holding_costs', {})
+    months_held = metrics['months_held']
+    holding_breakdown = {
+        'Mortgage Interest': metrics['total_mortgage_payments'],
+        'Property Taxes': (holding.get('monthly_taxes', 0) or 0) * months_held,
+        'Insurance': (holding.get('monthly_insurance', 0) or 0) * months_held,
+        'Utilities': (holding.get('monthly_utilities', 0) or 0) * months_held,
+        'HOA': (holding.get('monthly_hoa', 0) or 0) * months_held,
+        'Lawn/Landscape': (holding.get('monthly_lawn', 0) or 0) * months_held,
+        'Other': (holding.get('monthly_other', 0) or 0) * months_held,
+    }
+    # Remove zero items
+    holding_breakdown = {k: v for k, v in holding_breakdown.items() if v > 0}
+    holding_total = metrics['total_holding_cost']
+
+    total_cogs = purchase_price + acq_closing_total + renovation_total + holding_total
+
+    # ---- SELLING COSTS ----
+    commission = metrics['sale_commission']
+    commission_pct = metrics['sale_commission_pct']
+    sale_closing = metrics['sale_closing']
+    sale_closing_pct = metrics['sale_closing_cost_pct']
+    selling_expense_total = sum(e.get('amount', 0) for e in selling_expenses)
+
+    # Sale closing items from CD if available
+    sale_closing_items = []
+    if cd_sale and cd_sale.get('line_items'):
+        sale_closing_items = cd_sale['line_items']
+        sale_closing = sum(item.get('amount', 0) for item in sale_closing_items)
+
+    total_selling = commission + sale_closing + selling_expense_total
+
+    # ---- TOTALS ----
+    total_costs = total_cogs + total_selling
+    net_profit = net_sale_proceeds - total_costs
+
+    # Self-employment tax estimate (15.3% — 12.4% SS + 2.9% Medicare)
+    se_tax = net_profit * 0.153 if net_profit > 0 else 0
+    net_after_se = net_profit - se_tax
+
+    # Partnership split
+    split_pct = prop.get('partner_split_pct', 50) / 100
+
+    return {
+        # Income
+        'sale_price': sale_price,
+        'seller_concessions': seller_concessions,
+        'net_sale_proceeds': net_sale_proceeds,
+        # COGS - Acquisition
+        'purchase_price': purchase_price,
+        'acq_closing_items': acq_closing_items,
+        'acq_closing_total': acq_closing_total,
+        'has_closing_disclosure_purchase': bool(cd_purchase.get('line_items')),
+        'has_closing_disclosure_sale': bool(cd_sale.get('line_items')),
+        # COGS - Renovation
+        'renovation_subtotals': renovation_subtotals,
+        'renovation_total': renovation_total,
+        'total_credits': total_credits,
+        # COGS - Holding
+        'holding_breakdown': holding_breakdown,
+        'holding_total': holding_total,
+        'total_cogs': total_cogs,
+        # Selling
+        'commission': commission,
+        'commission_pct': commission_pct,
+        'sale_closing': sale_closing,
+        'sale_closing_pct': sale_closing_pct,
+        'sale_closing_items': sale_closing_items,
+        'selling_expenses': [{'vendor': e.get('vendor', ''), 'description': e.get('description', ''), 'amount': e.get('amount', 0)} for e in selling_expenses],
+        'selling_expense_total': selling_expense_total,
+        'total_selling': total_selling,
+        # Totals
+        'total_costs': total_costs,
+        'net_profit': net_profit,
+        'se_tax_rate': 15.3,
+        'se_tax': se_tax,
+        'net_after_se': net_after_se,
+        'partner_a_share': net_profit * split_pct,
+        'partner_b_share': net_profit * (1 - split_pct),
+        'partner_split_pct': prop.get('partner_split_pct', 50),
+        # Context
+        'address': prop.get('address', ''),
+        'city': prop.get('city', ''),
+        'state': prop.get('state', ''),
+        'purchase_date': prop.get('purchase_date'),
+        'sale_date': prop.get('sale_date'),
+        'days_held': metrics['days_held'],
+        'months_held': metrics['months_held'],
+        'status': metrics['status'],
+    }
+
+
+def parse_closing_disclosure(pdf_bytes):
+    """Parse a CFPB Closing Disclosure PDF and extract financial data."""
+    try:
+        import pdfplumber
+    except ImportError:
+        return {'error': 'pdfplumber not installed', 'line_items': [], 'raw_text': ''}
+
+    result = {
+        'loan_amount': 0,
+        'interest_rate': 0,
+        'closing_costs_total': 0,
+        'cash_to_close': 0,
+        'line_items': [],
+        'raw_text': '',
+    }
+
+    try:
+        pdf = pdfplumber.open(io.BytesIO(pdf_bytes))
+        all_text = ''
+        for page in pdf.pages:
+            text = page.extract_text() or ''
+            all_text += text + '\n\n'
+        pdf.close()
+        result['raw_text'] = all_text[:20000]  # cap stored text
+
+        # Extract loan amount
+        m = re.search(r'Loan\s*Amount\s*\$?([\d,]+\.?\d*)', all_text, re.IGNORECASE)
+        if m:
+            result['loan_amount'] = float(m.group(1).replace(',', ''))
+
+        # Extract interest rate
+        m = re.search(r'Interest\s*Rate\s*([\d.]+)\s*%', all_text, re.IGNORECASE)
+        if m:
+            result['interest_rate'] = float(m.group(1))
+
+        # Extract cash to close
+        m = re.search(r'Cash\s*to\s*Close\s*\$?([\d,]+\.?\d*)', all_text, re.IGNORECASE)
+        if m:
+            result['cash_to_close'] = float(m.group(1).replace(',', ''))
+
+        # Extract line items — look for lines with dollar amounts
+        # Pattern: description followed by a dollar amount
+        line_pattern = re.compile(r'^(.+?)\s+\$?([\d,]+\.\d{2})\s*$', re.MULTILINE)
+        for match in line_pattern.finditer(all_text):
+            desc = match.group(1).strip()
+            amount = float(match.group(2).replace(',', ''))
+            if amount < 1 or amount > 10000000:
+                continue
+            # Skip header/total lines
+            skip_words = ['total', 'page', 'closing disclosure', 'loan estimate',
+                          'projected', 'annual', 'monthly']
+            if any(sw in desc.lower() for sw in skip_words):
+                continue
+            # Classify for tax purposes
+            tax_cat = 'Other - Review Required'
+            desc_lower = desc.lower()
+            for keyword, category in CD_TAX_KEYWORDS.items():
+                if keyword in desc_lower:
+                    tax_cat = category
+                    break
+
+            result['line_items'].append({
+                'description': desc,
+                'amount': amount,
+                'tax_category': tax_cat,
+            })
+
+        result['closing_costs_total'] = sum(item['amount'] for item in result['line_items'])
+
+    except Exception as e:
+        result['error'] = str(e)
+
+    return result
+
+
+def generate_pnl_csv_rows(pnl, prop):
+    """Generate CSV rows for a property P&L report."""
+    rows = []
+    addr = f"{prop.get('address', '')} {prop.get('city', '')} {prop.get('state', '')}"
+    rows.append(['PROFIT & LOSS STATEMENT', addr])
+    rows.append(['Purchase Date', pnl.get('purchase_date', 'N/A')])
+    rows.append(['Sale Date', pnl.get('sale_date', 'N/A')])
+    rows.append(['Days Held', pnl.get('days_held', 0)])
+    rows.append([])
+    rows.append(['GROSS INCOME', '', 'Amount'])
+    rows.append(['Sale Price', '', f"{pnl['sale_price']:.2f}"])
+    if pnl['seller_concessions'] > 0:
+        rows.append(['Less: Seller Concessions', '', f"-{pnl['seller_concessions']:.2f}"])
+    rows.append(['Net Sale Proceeds', '', f"{pnl['net_sale_proceeds']:.2f}"])
+    rows.append([])
+    rows.append(['COST OF GOODS SOLD (Capitalized to Basis)', '', ''])
+    rows.append(['Purchase Price', '', f"{pnl['purchase_price']:.2f}"])
+    rows.append(['Acquisition Closing Costs', '', f"{pnl['acq_closing_total']:.2f}"])
+    if pnl['acq_closing_items']:
+        for item in pnl['acq_closing_items']:
+            rows.append(['', f"  {item['description']}", f"{item['amount']:.2f}"])
+    rows.append(['Renovation Costs', '', f"{pnl['renovation_total']:.2f}"])
+    for label, amount in pnl['renovation_subtotals'].items():
+        rows.append(['', f"  {label}", f"{amount:.2f}"])
+    if pnl['total_credits'] > 0:
+        rows.append(['', '  Less: Credits/Returns', f"-{pnl['total_credits']:.2f}"])
+    rows.append(['Holding Costs (Capitalized)', '', f"{pnl['holding_total']:.2f}"])
+    for label, amount in pnl['holding_breakdown'].items():
+        rows.append(['', f"  {label}", f"{amount:.2f}"])
+    rows.append(['TOTAL COGS', '', f"{pnl['total_cogs']:.2f}"])
+    rows.append([])
+    rows.append(['SELLING COSTS', '', ''])
+    rows.append([f"RE Commissions ({pnl['commission_pct']}%)", '', f"{pnl['commission']:.2f}"])
+    rows.append([f"Sale Settlement ({pnl['sale_closing_pct']}%)", '', f"{pnl['sale_closing']:.2f}"])
+    if pnl['selling_expenses']:
+        for se in pnl['selling_expenses']:
+            rows.append([f"  {se['description']}", se['vendor'], f"{se['amount']:.2f}"])
+    rows.append(['TOTAL SELLING COSTS', '', f"{pnl['total_selling']:.2f}"])
+    rows.append([])
+    rows.append(['TOTAL ALL COSTS', '', f"{pnl['total_costs']:.2f}"])
+    rows.append([])
+    rows.append(['NET PROFIT (LOSS)', '', f"{pnl['net_profit']:.2f}"])
+    rows.append([f"Est. Self-Employment Tax ({pnl['se_tax_rate']}%)", '', f"{pnl['se_tax']:.2f}"])
+    rows.append(['Net After SE Tax', '', f"{pnl['net_after_se']:.2f}"])
+    rows.append([])
+    rows.append([f"Partner A ({pnl['partner_split_pct']}%)", '', f"{pnl['partner_a_share']:.2f}"])
+    rows.append([f"Partner B ({100 - pnl['partner_split_pct']}%)", '', f"{pnl['partner_b_share']:.2f}"])
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -1004,6 +1336,380 @@ def portfolio_summary():
         'total_invested': total_invested, 'total_profit': total_profit,
         'total_rehab': total_rehab, 'avg_roi': avg_roi, 'all_flags': all_flags,
     })
+
+
+# ---------------------------------------------------------------------------
+# P&L API Routes
+# ---------------------------------------------------------------------------
+@app.route('/api/flips/<prop_id>/pnl', methods=['GET'])
+def get_property_pnl(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    metrics = calc_property_metrics(prop)
+    pnl = calc_pnl(prop, metrics)
+    return jsonify(pnl)
+
+
+@app.route('/api/flips/pnl/annual', methods=['GET'])
+def get_annual_pnl():
+    year = request.args.get('year', '2026')
+    data = load_data()
+    all_pnls = []
+    totals = {
+        'sale_price': 0, 'net_sale_proceeds': 0,
+        'purchase_price': 0, 'acq_closing_total': 0,
+        'renovation_total': 0, 'holding_total': 0, 'total_cogs': 0,
+        'commission': 0, 'sale_closing': 0, 'selling_expense_total': 0,
+        'total_selling': 0, 'total_costs': 0,
+        'net_profit': 0, 'se_tax': 0, 'net_after_se': 0,
+        'partner_a_share': 0, 'partner_b_share': 0,
+    }
+    for prop in data['properties']:
+        metrics = calc_property_metrics(prop)
+        pnl = calc_pnl(prop, metrics)
+        all_pnls.append(pnl)
+        for key in totals:
+            totals[key] += pnl.get(key, 0)
+
+    return jsonify({
+        'year': year,
+        'property_count': len(all_pnls),
+        'properties': all_pnls,
+        'totals': totals,
+    })
+
+
+@app.route('/api/flips/<prop_id>/pnl/csv', methods=['GET'])
+def export_property_pnl_csv(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    metrics = calc_property_metrics(prop)
+    pnl = calc_pnl(prop, metrics)
+    rows = generate_pnl_csv_rows(pnl, prop)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    for row in rows:
+        writer.writerow(row)
+    resp = Response(output.getvalue(), mimetype='text/csv')
+    addr = prop.get('address', 'property').replace(' ', '_')
+    resp.headers['Content-Disposition'] = f'attachment; filename=PnL_{addr}.csv'
+    return resp
+
+
+@app.route('/api/flips/pnl/annual/csv', methods=['GET'])
+def export_annual_pnl_csv():
+    year = request.args.get('year', '2026')
+    data = load_data()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([f'{year} ANNUAL PROFIT & LOSS SUMMARY'])
+    writer.writerow([])
+
+    grand_totals = {'sale': 0, 'cogs': 0, 'selling': 0, 'profit': 0, 'se_tax': 0}
+
+    for prop in data['properties']:
+        metrics = calc_property_metrics(prop)
+        pnl = calc_pnl(prop, metrics)
+        rows = generate_pnl_csv_rows(pnl, prop)
+        for row in rows:
+            writer.writerow(row)
+        writer.writerow([])
+        writer.writerow(['=' * 50])
+        writer.writerow([])
+        grand_totals['sale'] += pnl['net_sale_proceeds']
+        grand_totals['cogs'] += pnl['total_cogs']
+        grand_totals['selling'] += pnl['total_selling']
+        grand_totals['profit'] += pnl['net_profit']
+        grand_totals['se_tax'] += pnl['se_tax']
+
+    writer.writerow(['ANNUAL TOTALS'])
+    writer.writerow(['Total Net Sale Proceeds', '', f"{grand_totals['sale']:.2f}"])
+    writer.writerow(['Total COGS', '', f"{grand_totals['cogs']:.2f}"])
+    writer.writerow(['Total Selling Costs', '', f"{grand_totals['selling']:.2f}"])
+    writer.writerow(['Total Net Profit', '', f"{grand_totals['profit']:.2f}"])
+    writer.writerow(['Total Est. SE Tax', '', f"{grand_totals['se_tax']:.2f}"])
+
+    resp = Response(output.getvalue(), mimetype='text/csv')
+    resp.headers['Content-Disposition'] = f'attachment; filename=Annual_PnL_{year}.csv'
+    return resp
+
+
+@app.route('/api/flips/<prop_id>/pnl/pdf', methods=['GET'])
+def export_property_pnl_pdf(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    metrics = calc_property_metrics(prop)
+    pnl = calc_pnl(prop, metrics)
+    pdf_bytes = generate_pnl_pdf(pnl, prop)
+    return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf',
+                     download_name=f"PnL_{prop.get('address', 'property').replace(' ', '_')}.pdf")
+
+
+@app.route('/api/flips/pnl/annual/pdf', methods=['GET'])
+def export_annual_pnl_pdf():
+    year = request.args.get('year', '2026')
+    data = load_data()
+    all_pnls = []
+    for prop in data['properties']:
+        metrics = calc_property_metrics(prop)
+        pnl = calc_pnl(prop, metrics)
+        all_pnls.append((pnl, prop))
+    pdf_bytes = generate_annual_pnl_pdf(year, all_pnls)
+    return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf',
+                     download_name=f"Annual_PnL_{year}.pdf")
+
+
+def generate_pnl_pdf(pnl, prop):
+    """Generate a professional P&L PDF using reportlab."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    except ImportError:
+        # Fallback: return a simple text PDF
+        return b'%PDF-1.0 reportlab not installed'
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Header
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, spaceAfter=4)
+    sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=10, textColor=colors.grey)
+    elements.append(Paragraph(f"Profit & Loss Statement", title_style))
+    addr = f"{prop.get('address', '')} — {prop.get('city', '')}, {prop.get('state', '')}"
+    elements.append(Paragraph(addr, sub_style))
+    dates = f"Purchased: {pnl.get('purchase_date', 'N/A')} | Sold: {pnl.get('sale_date', 'N/A')} | Days Held: {pnl.get('days_held', 0)}"
+    elements.append(Paragraph(dates, sub_style))
+    elements.append(Spacer(1, 12))
+
+    def fmt(v):
+        return f"${v:,.2f}" if v >= 0 else f"-${abs(v):,.2f}"
+
+    # Build table data
+    data = [
+        ['GROSS INCOME', '', ''],
+        ['  Sale Price', '', fmt(pnl['sale_price'])],
+    ]
+    if pnl['seller_concessions'] > 0:
+        data.append(['  Less: Seller Concessions', '', f"-{fmt(pnl['seller_concessions'])}"])
+    data.append(['  Net Sale Proceeds', '', fmt(pnl['net_sale_proceeds'])])
+    data.append(['', '', ''])
+    data.append(['COST OF GOODS SOLD', '', ''])
+    data.append(['  Purchase Price', '', fmt(pnl['purchase_price'])])
+    data.append(['  Acquisition Closing Costs', '', fmt(pnl['acq_closing_total'])])
+    if pnl['acq_closing_items']:
+        for item in pnl['acq_closing_items'][:15]:
+            data.append(['', f"    {item['description']}", fmt(item['amount'])])
+    data.append(['  Renovation Costs', '', fmt(pnl['renovation_total'])])
+    for label, amount in pnl['renovation_subtotals'].items():
+        data.append(['', f"    {label}", fmt(amount)])
+    if pnl['total_credits'] > 0:
+        data.append(['', '    Less: Credits/Returns', f"-{fmt(pnl['total_credits'])}"])
+    data.append(['  Holding Costs (Capitalized)', '', fmt(pnl['holding_total'])])
+    for label, amount in pnl['holding_breakdown'].items():
+        data.append(['', f"    {label}", fmt(amount)])
+    data.append(['  TOTAL COGS', '', fmt(pnl['total_cogs'])])
+    data.append(['', '', ''])
+    data.append(['SELLING COSTS', '', ''])
+    data.append([f"  RE Commissions ({pnl['commission_pct']}%)", '', fmt(pnl['commission'])])
+    data.append([f"  Sale Settlement ({pnl['sale_closing_pct']}%)", '', fmt(pnl['sale_closing'])])
+    for se in pnl.get('selling_expenses', []):
+        data.append([f"    {se['description']}", se['vendor'], fmt(se['amount'])])
+    data.append(['  TOTAL SELLING COSTS', '', fmt(pnl['total_selling'])])
+    data.append(['', '', ''])
+    data.append(['TOTAL ALL COSTS', '', fmt(pnl['total_costs'])])
+    data.append(['', '', ''])
+    data.append(['NET PROFIT (LOSS)', '', fmt(pnl['net_profit'])])
+    data.append([f"  Est. Self-Employment Tax ({pnl['se_tax_rate']}%)", '', fmt(pnl['se_tax'])])
+    data.append(['  Net After SE Tax', '', fmt(pnl['net_after_se'])])
+    data.append(['', '', ''])
+    data.append([f"  Partner A ({pnl['partner_split_pct']}%)", '', fmt(pnl['partner_a_share'])])
+    data.append([f"  Partner B ({100 - pnl['partner_split_pct']}%)", '', fmt(pnl['partner_b_share'])])
+
+    col_widths = [3.0 * inch, 2.5 * inch, 1.5 * inch]
+    table = Table(data, colWidths=col_widths)
+
+    # Style
+    style_cmds = [
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]
+    # Bold section headers and totals
+    for i, row in enumerate(data):
+        if row[0] and not row[0].startswith(' '):
+            style_cmds.append(('FONTNAME', (0, i), (-1, i), 'Helvetica-Bold'))
+            style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.Color(0.95, 0.95, 0.95)))
+        if 'TOTAL' in row[0] or 'NET PROFIT' in row[0]:
+            style_cmds.append(('FONTNAME', (0, i), (-1, i), 'Helvetica-Bold'))
+            style_cmds.append(('LINEABOVE', (0, i), (-1, i), 1, colors.black))
+
+    table.setStyle(TableStyle(style_cmds))
+    elements.append(table)
+
+    # Footer
+    elements.append(Spacer(1, 24))
+    footer = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=7, textColor=colors.grey)
+    elements.append(Paragraph(f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} — For tax preparation purposes. Consult your CPA.", footer))
+
+    doc.build(elements)
+    return buffer.getvalue()
+
+
+def generate_annual_pnl_pdf(year, all_pnls):
+    """Generate annual summary P&L PDF."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    except ImportError:
+        return b'%PDF-1.0 reportlab not installed'
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5 * inch)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    def fmt(v):
+        return f"${v:,.2f}" if v >= 0 else f"-${abs(v):,.2f}"
+
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, spaceAfter=4)
+    sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=10, textColor=colors.grey)
+    elements.append(Paragraph(f"{year} Annual Profit & Loss Summary", title_style))
+    elements.append(Paragraph(f"{len(all_pnls)} properties", sub_style))
+    elements.append(Spacer(1, 16))
+
+    # Summary table
+    header = ['Property', 'Sale Price', 'COGS', 'Selling', 'Net Profit', 'SE Tax']
+    data = [header]
+    totals = [0, 0, 0, 0, 0]
+    for pnl, prop in all_pnls:
+        data.append([
+            prop.get('address', ''),
+            fmt(pnl['net_sale_proceeds']),
+            fmt(pnl['total_cogs']),
+            fmt(pnl['total_selling']),
+            fmt(pnl['net_profit']),
+            fmt(pnl['se_tax']),
+        ])
+        totals[0] += pnl['net_sale_proceeds']
+        totals[1] += pnl['total_cogs']
+        totals[2] += pnl['total_selling']
+        totals[3] += pnl['net_profit']
+        totals[4] += pnl['se_tax']
+    data.append(['TOTALS', fmt(totals[0]), fmt(totals[1]), fmt(totals[2]), fmt(totals[3]), fmt(totals[4])])
+
+    table = Table(data, colWidths=[2.0 * inch, 1.1 * inch, 1.1 * inch, 1.0 * inch, 1.1 * inch, 0.9 * inch])
+    style_cmds = [
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black),
+        ('LINEABOVE', (0, -1), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.8, 0.8, 0.8)),
+    ]
+    table.setStyle(TableStyle(style_cmds))
+    elements.append(table)
+
+    elements.append(Spacer(1, 24))
+    footer = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=7, textColor=colors.grey)
+    elements.append(Paragraph(f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} — For tax preparation purposes. Consult your CPA.", footer))
+
+    doc.build(elements)
+    return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Closing Disclosure Upload Routes
+# ---------------------------------------------------------------------------
+@app.route('/api/flips/<prop_id>/closing-disclosure', methods=['POST'])
+def upload_closing_disclosure(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['file']
+    cd_type = request.form.get('type', 'purchase')  # 'purchase' or 'sale'
+    pdf_bytes = file.read()
+
+    # Parse the PDF
+    parsed = parse_closing_disclosure(pdf_bytes)
+
+    # Store base64-encoded PDF + parsed data
+    cd_data = {
+        'upload_date': datetime.now().strftime('%Y-%m-%d'),
+        'filename': file.filename,
+        'pdf_base64': base64.b64encode(pdf_bytes).decode('utf-8'),
+        'loan_amount': parsed.get('loan_amount', 0),
+        'interest_rate': parsed.get('interest_rate', 0),
+        'closing_costs_total': parsed.get('closing_costs_total', 0),
+        'cash_to_close': parsed.get('cash_to_close', 0),
+        'line_items': parsed.get('line_items', []),
+        'raw_text': parsed.get('raw_text', ''),
+    }
+
+    key = f'closing_disclosure_{cd_type}'
+    prop[key] = cd_data
+    save_data(data)
+
+    return jsonify({
+        'success': True,
+        'type': cd_type,
+        'filename': file.filename,
+        'line_items': parsed.get('line_items', []),
+        'loan_amount': parsed.get('loan_amount', 0),
+        'interest_rate': parsed.get('interest_rate', 0),
+        'closing_costs_total': parsed.get('closing_costs_total', 0),
+        'cash_to_close': parsed.get('cash_to_close', 0),
+        'error': parsed.get('error'),
+    })
+
+
+@app.route('/api/flips/<prop_id>/closing-disclosure', methods=['PUT'])
+def update_closing_disclosure(prop_id):
+    """Save user-corrected parsed data after review."""
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+
+    body = request.json
+    cd_type = body.get('type', 'purchase')
+    key = f'closing_disclosure_{cd_type}'
+
+    if key not in prop:
+        return jsonify({'error': f'No {cd_type} closing disclosure uploaded'}), 400
+
+    # Update line items with user corrections
+    prop[key]['line_items'] = body.get('line_items', prop[key].get('line_items', []))
+    prop[key]['closing_costs_total'] = sum(item.get('amount', 0) for item in prop[key]['line_items'])
+
+    save_data(data)
+    return jsonify({'success': True})
 
 
 def seed_22nd_street():
