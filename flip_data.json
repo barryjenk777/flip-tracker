@@ -37,124 +37,124 @@
       },
       "expenses": [
         {
-          "date": "2026-01-15",
-          "vendor": "Echols Plumbing",
-          "description": "Draw 1 Paypal",
           "amount": 3060,
           "category": "Labor - Plumbing",
-          "is_credit": false
+          "date": "2026-01-15",
+          "description": "Draw 1 Paypal",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-01-22",
-          "vendor": "Echols Plumbing",
-          "description": "Draw 2 Paypal",
           "amount": 1000,
           "category": "Labor - Plumbing",
-          "is_credit": false
+          "date": "2026-01-22",
+          "description": "Draw 2 Paypal",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-02-01",
-          "vendor": "Echols Plumbing",
-          "description": "Draw 3 Paypal",
           "amount": 3000,
           "category": "Labor - Plumbing",
-          "is_credit": false
+          "date": "2026-02-01",
+          "description": "Draw 3 Paypal",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-01-20",
-          "vendor": "Amazon",
-          "description": "Building Materials",
           "amount": 3107.57,
           "category": "Building Materials",
-          "is_credit": false
+          "date": "2026-01-20",
+          "description": "Building Materials",
+          "is_credit": false,
+          "vendor": "Amazon"
         },
         {
-          "date": "2026-01-25",
-          "vendor": "Lowes",
-          "description": "Building Materials",
           "amount": 2976,
           "category": "Building Materials",
-          "is_credit": false
+          "date": "2026-01-25",
+          "description": "Building Materials",
+          "is_credit": false,
+          "vendor": "Lowes"
         },
         {
-          "date": "2026-02-01",
-          "vendor": "Home Depot",
-          "description": "Building Materials",
           "amount": 3832.96,
           "category": "Building Materials",
-          "is_credit": false
+          "date": "2026-02-01",
+          "description": "Building Materials",
+          "is_credit": false,
+          "vendor": "Home Depot"
         },
         {
-          "date": "2026-01-28",
-          "vendor": "Floor Trader",
-          "description": "Flooring",
           "amount": 2535.29,
           "category": "Flooring",
-          "is_credit": false
+          "date": "2026-01-28",
+          "description": "Flooring",
+          "is_credit": false,
+          "vendor": "Floor Trader"
         },
         {
-          "date": "2026-02-10",
-          "vendor": "Echols Plumbing",
-          "description": "Draw 4 Paypal",
           "amount": 3500,
           "category": "Labor - Plumbing",
-          "is_credit": false
+          "date": "2026-02-10",
+          "description": "Draw 4 Paypal",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-02-18",
-          "vendor": "Echols Plumbing",
-          "description": "Draw 5 Paypal",
           "amount": 5000,
           "category": "Labor - Plumbing",
-          "is_credit": false
+          "date": "2026-02-18",
+          "description": "Draw 5 Paypal",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-03-01",
-          "vendor": "Echols Plumbing",
-          "description": "Draw 6 Kitchen",
           "amount": 7000,
           "category": "Labor - Kitchen",
-          "is_credit": false
+          "date": "2026-03-01",
+          "description": "Draw 6 Kitchen",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-03-10",
-          "vendor": "Echols Plumbing",
-          "description": "Draw 7 Kitchen Final",
           "amount": 4180,
           "category": "Labor - Kitchen",
-          "is_credit": false
+          "date": "2026-03-10",
+          "description": "Draw 7 Kitchen Final",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-03-12",
-          "vendor": "Virtual Tidewater",
-          "description": "Marketing Pics",
           "amount": 145,
           "category": "Marketing",
-          "is_credit": false
+          "date": "2026-03-12",
+          "description": "Marketing Pics",
+          "is_credit": false,
+          "vendor": "Virtual Tidewater"
         },
         {
-          "date": "2026-03-15",
-          "vendor": "Echols Plumbing",
-          "description": "Final Payment",
           "amount": 5640,
           "category": "Labor - Plumbing",
-          "is_credit": false
+          "date": "2026-03-15",
+          "description": "Final Payment",
+          "is_credit": false,
+          "vendor": "Echols Plumbing"
         },
         {
-          "date": "2026-03-05",
-          "vendor": "I2G Source",
-          "description": "Termite Repair",
           "amount": 550,
           "category": "Repairs - Pest",
-          "is_credit": false
+          "date": "2026-03-05",
+          "description": "Termite Repair",
+          "is_credit": false,
+          "vendor": "I2G Source"
         },
         {
-          "date": "2026-03-08",
-          "vendor": "TJ Landscaping",
-          "description": "Venmo",
           "amount": 1000,
           "category": "Landscaping",
-          "is_credit": false
+          "date": "2026-03-08",
+          "description": "Venmo",
+          "is_credit": false,
+          "vendor": "TJ Landscaping"
         }
       ],
       "draws": [
