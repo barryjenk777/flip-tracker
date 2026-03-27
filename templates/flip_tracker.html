@@ -575,7 +575,10 @@
 
         <!-- ===== PROPERTY DETAIL TAB ===== -->
         <div class="tab-content" id="tab-property">
-            <div id="property-selector" style="margin-bottom:16px;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <div id="property-selector"></div>
+                <button class="btn btn-secondary" onclick="showEditProperty()">Edit Property</button>
+            </div>
 
             <!-- Key Metrics -->
             <div class="stat-grid" id="property-stats"></div>
@@ -650,7 +653,7 @@
                 </div>
                 <table class="data-table" id="expense-table">
                     <thead>
-                        <tr><th>Date</th><th>Vendor</th><th>Description</th><th>Category</th><th style="text-align:right">Amount</th></tr>
+                        <tr><th>Date</th><th>Vendor</th><th>Description</th><th>Category</th><th style="text-align:right">Amount</th><th style="width:40px"></th></tr>
                     </thead>
                     <tbody></tbody>
                 </table>
@@ -816,6 +819,47 @@
         </div>
     </div>
 
+    <!-- Edit Property Modal -->
+    <div class="modal-overlay" id="modal-edit-property">
+        <div class="modal">
+            <h2>Edit Property</h2>
+            <div class="form-grid" id="form-edit-property">
+                <div class="form-group"><label>Street Address</label><input type="text" id="ep-address"></div>
+                <div class="form-group"><label>City</label><input type="text" id="ep-city"></div>
+                <div class="form-group"><label>State</label><input type="text" id="ep-state"></div>
+                <div class="form-group"><label>ZIP</label><input type="text" id="ep-zip"></div>
+                <div class="form-group"><label>Sq Ft</label><input type="number" id="ep-sqft"></div>
+                <div class="form-group"><label>Purchase Price</label><input type="number" id="ep-purchase" step="0.01"></div>
+                <div class="form-group"><label>ARV (After Repair Value)</label><input type="number" id="ep-arv" step="0.01"></div>
+                <div class="form-group"><label>Sale Price (if sold)</label><input type="number" id="ep-saleprice" step="0.01"></div>
+                <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="ep-acqclosing" step="0.01"></div>
+                <div class="form-group"><label>Purchase Settlement (w/ down payment)</label><input type="number" id="ep-settlement" step="0.01"></div>
+                <div class="form-group"><label>EMD</label><input type="number" id="ep-emd" step="0.01"></div>
+                <div class="form-group"><label>Rehab Budget</label><input type="number" id="ep-budget" step="0.01"></div>
+                <div class="form-group"><label>Purchase Date</label><input type="date" id="ep-purchasedate"></div>
+                <div class="form-group"><label>Est. Sale Date</label><input type="date" id="ep-estsaledate"></div>
+                <div class="form-group"><label>Listing Date</label><input type="date" id="ep-listingdate"></div>
+                <div class="form-group"><label>Sale Date (if sold)</label><input type="date" id="ep-saledate"></div>
+                <div class="form-group"><label>Monthly Mortgage</label><input type="number" id="ep-mortgage" step="0.01"></div>
+                <div class="form-group"><label>Monthly Insurance</label><input type="number" id="ep-insurance" step="0.01"></div>
+                <div class="form-group"><label>Monthly Taxes</label><input type="number" id="ep-taxes" step="0.01"></div>
+                <div class="form-group"><label>Monthly Utilities</label><input type="number" id="ep-utilities" step="0.01"></div>
+                <div class="form-group"><label>Monthly HOA</label><input type="number" id="ep-hoa" step="0.01"></div>
+                <div class="form-group"><label>Monthly Lawn</label><input type="number" id="ep-lawn" step="0.01"></div>
+                <div class="form-group"><label>Commission %</label><input type="number" id="ep-commission" step="0.1"></div>
+                <div class="form-group"><label>Sale Closing %</label><input type="number" id="ep-saleclosing" step="0.1"></div>
+                <div class="form-group"><label>Partner Split %</label><input type="number" id="ep-split" step="0.1"></div>
+                <div class="form-group"><label>Contingency %</label><input type="number" id="ep-contingency" step="0.1"></div>
+                <div class="form-group" style="grid-column:1/-1"><label>Notes</label><textarea id="ep-notes" rows="2" style="width:100%;resize:vertical;"></textarea></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-danger" onclick="deleteProperty()" style="margin-right:auto;">Delete Property</button>
+                <button class="btn btn-secondary" onclick="hideModal('modal-edit-property')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitEditProperty()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
 <script>
 // ---- State ----
 let flipData = { properties: [], settings: {} };
@@ -871,6 +915,121 @@ function showAddProperty() { showModal('modal-add-property'); }
 function showAddExpense() { showModal('modal-add-expense'); }
 function showAddDraw() { showModal('modal-add-draw'); }
 function showAddMortgage() { showModal('modal-add-mortgage'); }
+
+function showEditProperty() {
+    const prop = getSelected();
+    if (!prop) return;
+    $('ep-address').value = prop.address || '';
+    $('ep-city').value = prop.city || '';
+    $('ep-state').value = prop.state || '';
+    $('ep-zip').value = prop.zip || '';
+    $('ep-sqft').value = prop.sqft || '';
+    $('ep-purchase').value = prop.purchase_price || '';
+    $('ep-arv').value = prop.arv || '';
+    $('ep-saleprice').value = prop.sale_price || '';
+    $('ep-acqclosing').value = prop.acq_closing_cost || '';
+    $('ep-settlement').value = prop.purchase_settlement || '';
+    $('ep-emd').value = prop.emd || '';
+    $('ep-budget').value = prop.rehab_budget || '';
+    $('ep-purchasedate').value = prop.purchase_date || '';
+    $('ep-estsaledate').value = prop.estimated_sale_date || '';
+    $('ep-listingdate').value = prop.listing_date || '';
+    $('ep-saledate').value = prop.sale_date || '';
+    const hc = prop.holding_costs || {};
+    $('ep-mortgage').value = hc.monthly_mortgage || '';
+    $('ep-insurance').value = hc.monthly_insurance || '';
+    $('ep-taxes').value = hc.monthly_taxes || '';
+    $('ep-utilities').value = hc.monthly_utilities || '';
+    $('ep-hoa').value = hc.monthly_hoa || '';
+    $('ep-lawn').value = hc.monthly_lawn || '';
+    $('ep-commission').value = prop.sale_commission_pct || 4;
+    $('ep-saleclosing').value = prop.sale_closing_cost_pct || 1.5;
+    $('ep-split').value = prop.partner_split_pct || 50;
+    $('ep-contingency').value = prop.contingency_pct || 15;
+    $('ep-notes').value = prop.notes || '';
+    showModal('modal-edit-property');
+}
+
+async function submitEditProperty() {
+    const prop = getSelected();
+    if (!prop) return;
+    const updates = {
+        address: $('ep-address').value,
+        city: $('ep-city').value,
+        state: $('ep-state').value,
+        zip: $('ep-zip').value,
+        sqft: +$('ep-sqft').value || 0,
+        purchase_price: +$('ep-purchase').value || 0,
+        arv: +$('ep-arv').value || 0,
+        sale_price: +$('ep-saleprice').value || 0,
+        acq_closing_cost: +$('ep-acqclosing').value || 0,
+        purchase_settlement: +$('ep-settlement').value || 0,
+        emd: +$('ep-emd').value || 0,
+        rehab_budget: +$('ep-budget').value || 0,
+        purchase_date: $('ep-purchasedate').value || null,
+        estimated_sale_date: $('ep-estsaledate').value || null,
+        listing_date: $('ep-listingdate').value || null,
+        sale_date: $('ep-saledate').value || null,
+        sale_commission_pct: +$('ep-commission').value || 4,
+        sale_closing_cost_pct: +$('ep-saleclosing').value || 1.5,
+        partner_split_pct: +$('ep-split').value || 50,
+        contingency_pct: +$('ep-contingency').value || 15,
+        notes: $('ep-notes').value,
+        holding_costs: {
+            monthly_mortgage: +$('ep-mortgage').value || 0,
+            monthly_insurance: +$('ep-insurance').value || 0,
+            monthly_taxes: +$('ep-taxes').value || 0,
+            monthly_utilities: +$('ep-utilities').value || 0,
+            monthly_hoa: +$('ep-hoa').value || 0,
+            monthly_lawn: +$('ep-lawn').value || 0,
+            monthly_other: 0,
+        },
+    };
+    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+    hideModal('modal-edit-property');
+    await loadFlips();
+}
+
+async function deleteProperty() {
+    const prop = getSelected();
+    if (!prop) return;
+    if (!confirm(`Delete ${prop.address}? This cannot be undone.`)) return;
+    await fetch(`/api/flips/${prop.id}`, { method: 'DELETE' });
+    selectedPropertyId = null;
+    hideModal('modal-edit-property');
+    await loadFlips();
+    switchTab('portfolio');
+}
+
+async function deleteExpense(idx) {
+    const prop = getSelected();
+    if (!prop) return;
+    if (!confirm('Delete this expense?')) return;
+    const expenses = [...(prop.expenses || [])];
+    expenses.splice(idx, 1);
+    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ expenses }) });
+    await loadFlips();
+}
+
+async function deleteDraw(idx) {
+    const prop = getSelected();
+    if (!prop) return;
+    if (!confirm('Delete this draw?')) return;
+    const draws = [...(prop.draws || [])];
+    draws.splice(idx, 1);
+    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ draws }) });
+    await loadFlips();
+}
+
+async function deleteMortgage(idx) {
+    const prop = getSelected();
+    if (!prop) return;
+    if (!confirm('Delete this payment?')) return;
+    const mortgage_payments = [...(prop.mortgage_payments || [])];
+    mortgage_payments.splice(idx, 1);
+    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mortgage_payments }) });
+    await loadFlips();
+}
 
 async function submitNewProperty() {
     const prop = {
@@ -1160,15 +1319,17 @@ function renderExpenses() {
     // Category bars
     renderCategoryBars(m.rehab_by_category, m.total_rehab);
 
-    // Expense table
+    // Expense table — keep original index for delete
     const tbody = $('expense-table').querySelector('tbody');
-    tbody.innerHTML = (prop.expenses || []).sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(e => `
+    const sortedExpenses = (prop.expenses || []).map((e, origIdx) => ({...e, origIdx})).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    tbody.innerHTML = sortedExpenses.map(e => `
         <tr${e.is_credit ? ' style="color:var(--green)"' : ''}>
             <td>${e.date || '—'}</td>
             <td>${e.vendor || ''}</td>
             <td>${e.description || ''}</td>
             <td>${e.category || ''}</td>
             <td style="text-align:right;font-weight:600">${e.is_credit ? '-' : ''}${fmtD(e.amount)}</td>
+            <td style="text-align:center"><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.origIdx})" style="padding:2px 8px;font-size:11px;">X</button></td>
         </tr>
     `).join('');
 
@@ -1178,6 +1339,7 @@ function renderExpenses() {
             <div class="draw-num">Draw ${i+1}</div>
             <div class="draw-amt">${fmt(d.amount)}</div>
             <div class="draw-date">${d.date || ''} ${d.description ? '— ' + d.description : ''}</div>
+            <button class="btn btn-danger btn-sm" onclick="deleteDraw(${i})" style="margin-top:6px;padding:2px 8px;font-size:10px;">Delete</button>
         </div>
     `).join('');
     $('draw-summary').innerHTML = `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
@@ -1188,9 +1350,9 @@ function renderExpenses() {
 
     // Mortgages
     const mtbody = $('mortgage-table').querySelector('tbody');
-    mtbody.innerHTML = (prop.mortgage_payments || []).map(mp => `
-        <tr><td>${mp.date || '—'}</td><td style="text-align:right;font-weight:600">${fmtD(mp.amount)}</td></tr>
-    `).join('') + `<tr style="border-top:2px solid var(--border);font-weight:700;"><td>Total</td><td style="text-align:right">${fmtD(m.total_mortgage_payments)}</td></tr>`;
+    mtbody.innerHTML = (prop.mortgage_payments || []).map((mp, i) => `
+        <tr><td>${mp.date || '—'}</td><td style="text-align:right;font-weight:600">${fmtD(mp.amount)}</td><td style="text-align:center"><button class="btn btn-danger btn-sm" onclick="deleteMortgage(${i})" style="padding:2px 8px;font-size:11px;">X</button></td></tr>
+    `).join('') + `<tr style="border-top:2px solid var(--border);font-weight:700;"><td>Total</td><td style="text-align:right">${fmtD(m.total_mortgage_payments)}</td><td></td></tr>`;
 }
 
 const CAT_COLORS = ['#4fc3f7','#66bb6a','#ffa726','#ef5350','#ab47bc','#ff7043','#26c6da','#9ccc65','#ffca28','#ec407a','#7e57c2','#8d6e63'];
