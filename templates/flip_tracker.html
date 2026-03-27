@@ -985,7 +985,7 @@
 
                         <div class="card-title">Rehab Cost Estimate</div>
                         <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
-                            <div class="form-group"><label>Rehab Costs</label><input type="number" id="qa-rehab" placeholder="50000"></div>
+                            <div class="form-group"><label>Rehab Costs</label><input type="number" id="qa-rehab" placeholder="50000" oninput="autoCalcHardMoney()"></div>
                             <div class="form-group"><label>Initial Prep</label><input type="number" id="qa-prep" placeholder="0"></div>
                         </div>
                     </div>
@@ -995,7 +995,7 @@
                         <div class="card-title">Purchase Offer Assumptions</div>
                         <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
                             <div class="form-group"><label>Market Value Discount %</label><input type="number" id="qa-discount" placeholder="40" step="1"></div>
-                            <div class="form-group"><label>PURCHASE PRICE</label><input type="number" id="qa-asking" placeholder="392000" style="font-size:18px;font-weight:700;"></div>
+                            <div class="form-group"><label>PURCHASE PRICE</label><input type="number" id="qa-asking" placeholder="392000" style="font-size:18px;font-weight:700;" oninput="autoCalcHardMoney()"></div>
                             <div class="form-group"><label>Acq. Closing Costs</label><input type="number" id="qa-acqclose" placeholder="10000"></div>
                             <div class="form-group"><label>Monthly Rent Est.</label><input type="number" id="qa-rent" placeholder="2000"></div>
                         </div>
@@ -1007,7 +1007,8 @@
                             <div class="form-group"><label>Landscape (monthly)</label><input type="number" id="qa-landscape" placeholder="0"></div>
                             <div class="form-group"><label>Insurance (monthly)</label><input type="number" id="qa-insurance" placeholder="208"></div>
                             <div class="form-group"><label>Taxes (monthly)</label><input type="number" id="qa-taxes" placeholder="208"></div>
-                            <div class="form-group"><label>Hard Money (monthly)</label><input type="number" id="qa-hardmoney" placeholder="4600"></div>
+                            <div class="form-group"><label>Hard Money Rate %</label><input type="number" id="qa-hm-rate" placeholder="11" step="0.25" value="11" oninput="autoCalcHardMoney()"></div>
+                            <div class="form-group"><label>Hard Money (monthly) <span id="qa-hm-auto" style="font-size:10px;color:var(--accent)"></span></label><input type="number" id="qa-hardmoney" placeholder="auto-calculated"></div>
                         </div>
                     </div>
                 </div>
@@ -1069,13 +1070,14 @@
                 <div class="form-group"><label>State</label><input type="text" id="np-state" value="VA"></div>
                 <div class="form-group"><label>ZIP</label><input type="text" id="np-zip"></div>
                 <div class="form-group"><label>Sq Ft</label><input type="number" id="np-sqft"></div>
-                <div class="form-group"><label>Purchase Price</label><input type="number" id="np-purchase"></div>
+                <div class="form-group"><label>Purchase Price</label><input type="number" id="np-purchase" oninput="autoCalcNpMortgage()"></div>
                 <div class="form-group"><label>ARV (After Repair Value)</label><input type="number" id="np-arv"></div>
                 <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="np-acqclosing"></div>
-                <div class="form-group"><label>Rehab Budget</label><input type="number" id="np-budget"></div>
+                <div class="form-group"><label>Rehab Budget</label><input type="number" id="np-budget" oninput="autoCalcNpMortgage()"></div>
                 <div class="form-group"><label>Purchase Date</label><input type="date" id="np-purchasedate"></div>
                 <div class="form-group"><label>Est. Sale Date</label><input type="date" id="np-estsaledate"></div>
-                <div class="form-group"><label>Monthly Mortgage</label><input type="number" id="np-mortgage" step="0.01"></div>
+                <div class="form-group"><label>Hard Money Rate %</label><input type="number" id="np-hm-rate" step="0.25" value="11" oninput="autoCalcNpMortgage()"></div>
+                <div class="form-group"><label>Monthly Mortgage <span id="np-hm-auto" style="font-size:10px;color:var(--accent)"></span></label><input type="number" id="np-mortgage" step="0.01"></div>
                 <div class="form-group"><label>Commission %</label><input type="number" id="np-commission" value="4" step="0.1"></div>
                 <div class="form-group"><label>Partner Split %</label><input type="number" id="np-split" value="50"></div>
                 <div class="form-group"><label>Contingency %</label><input type="number" id="np-contingency" value="15"></div>
@@ -1168,19 +1170,20 @@
                 <div class="form-group"><label>State</label><input type="text" id="ep-state"></div>
                 <div class="form-group"><label>ZIP</label><input type="text" id="ep-zip"></div>
                 <div class="form-group"><label>Sq Ft</label><input type="number" id="ep-sqft"></div>
-                <div class="form-group"><label>Purchase Price</label><input type="number" id="ep-purchase" step="0.01"></div>
+                <div class="form-group"><label>Purchase Price</label><input type="number" id="ep-purchase" step="0.01" oninput="autoCalcEpMortgage()"></div>
                 <div class="form-group"><label>ARV (After Repair Value)</label><input type="number" id="ep-arv" step="0.01"></div>
                 <div class="form-group"><label>Sale Price (if sold)</label><input type="number" id="ep-saleprice" step="0.01"></div>
                 <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="ep-acqclosing" step="0.01"></div>
                 <div class="form-group"><label>Purchase Settlement (w/ down payment)</label><input type="number" id="ep-settlement" step="0.01"></div>
                 <div class="form-group"><label>EMD</label><input type="number" id="ep-emd" step="0.01"></div>
-                <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="ep-budget" step="0.01"></div>
+                <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="ep-budget" step="0.01" oninput="autoCalcEpMortgage()"></div>
                 <div class="form-group"><label>Lender Rehab Budget</label><input type="number" id="ep-lender-budget" step="0.01"></div>
                 <div class="form-group"><label>Purchase Date</label><input type="date" id="ep-purchasedate"></div>
                 <div class="form-group"><label>Est. Sale Date</label><input type="date" id="ep-estsaledate"></div>
                 <div class="form-group"><label>Listing Date</label><input type="date" id="ep-listingdate"></div>
                 <div class="form-group"><label>Sale Date (if sold)</label><input type="date" id="ep-saledate"></div>
-                <div class="form-group"><label>Monthly Mortgage</label><input type="number" id="ep-mortgage" step="0.01"></div>
+                <div class="form-group"><label>Hard Money Rate %</label><input type="number" id="ep-hm-rate" step="0.25" value="11" oninput="autoCalcEpMortgage()"></div>
+                <div class="form-group"><label>Monthly Mortgage <span id="ep-hm-auto" style="font-size:10px;color:var(--accent)"></span></label><input type="number" id="ep-mortgage" step="0.01"></div>
                 <div class="form-group"><label>Monthly Insurance</label><input type="number" id="ep-insurance" step="0.01"></div>
                 <div class="form-group"><label>Monthly Taxes</label><input type="number" id="ep-taxes" step="0.01"></div>
                 <div class="form-group"><label>Monthly Utilities</label><input type="number" id="ep-utilities" step="0.01"></div>
@@ -2556,6 +2559,42 @@ async function loadProspects() {
         renderPipeline();
         renderProspectHistory();
     } catch(e) { console.error('Failed to load prospects:', e); }
+}
+
+function autoCalcHardMoney() {
+    const purchase = +($('qa-asking') ? $('qa-asking').value : 0) || 0;
+    const rehab = +($('qa-rehab') ? $('qa-rehab').value : 0) || 0;
+    const rate = +($('qa-hm-rate') ? $('qa-hm-rate').value : 11) || 11;
+    const loanBasis = purchase + rehab;
+    if (loanBasis > 0) {
+        const monthly = (loanBasis * (rate / 100)) / 12;
+        if ($('qa-hardmoney')) $('qa-hardmoney').value = Math.round(monthly);
+        if ($('qa-hm-auto')) $('qa-hm-auto').textContent = `(${rate}% on ${fmt(loanBasis)})`;
+    }
+}
+
+function autoCalcNpMortgage() {
+    const purchase = +($('np-purchase') ? $('np-purchase').value : 0) || 0;
+    const rehab = +($('np-budget') ? $('np-budget').value : 0) || 0;
+    const rate = +($('np-hm-rate') ? $('np-hm-rate').value : 11) || 11;
+    const loanBasis = purchase + rehab;
+    if (loanBasis > 0) {
+        const monthly = (loanBasis * (rate / 100)) / 12;
+        if ($('np-mortgage')) $('np-mortgage').value = Math.round(monthly);
+        if ($('np-hm-auto')) $('np-hm-auto').textContent = `(${rate}% on ${fmt(loanBasis)})`;
+    }
+}
+
+function autoCalcEpMortgage() {
+    const purchase = +($('ep-purchase') ? $('ep-purchase').value : 0) || 0;
+    const rehab = +($('ep-budget') ? $('ep-budget').value : 0) || 0;
+    const rate = +($('ep-hm-rate') ? $('ep-hm-rate').value : 11) || 11;
+    const loanBasis = purchase + rehab;
+    if (loanBasis > 0) {
+        const monthly = (loanBasis * (rate / 100)) / 12;
+        if ($('ep-mortgage')) $('ep-mortgage').value = Math.round(monthly);
+        if ($('ep-hm-auto')) $('ep-hm-auto').textContent = `(${rate}% on ${fmt(loanBasis)})`;
+    }
 }
 
 async function analyzeProspect() {
