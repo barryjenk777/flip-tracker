@@ -373,6 +373,64 @@ def seed_second_property():
     save_data(data)
 
 
+def seed_third_property():
+    """Pre-load the third property data from the spreadsheet."""
+    data = load_data()
+    for p in data['properties']:
+        if p.get('id') == 'property-3':
+            return
+    prop = {
+        'id': 'property-3',
+        'address': 'Property 3',
+        'city': '',
+        'state': 'VA',
+        'zip': '',
+        'sqft': 0,
+        'purchase_price': 175000,
+        'arv': 238900,
+        'sale_price': 238900,
+        'acq_closing_cost': 0,
+        'purchase_settlement': 0,
+        'emd': 0,
+        'appraisal_fee': 0,
+        'commitment_fee': 0,
+        'purchase_date': None,
+        'estimated_sale_date': None,
+        'sale_date': None,
+        'listing_date': None,
+        'rehab_budget': 22000,
+        'sale_commission_pct': 6.0,
+        'sale_closing_cost_pct': 1.5,
+        'contingency_pct': 15.0,
+        'partner_split_pct': 50.0,
+        'status': 'active',
+        'notes': 'Condo property. No settlement charges, no draws, no mortgage.',
+        'holding_costs': {
+            'monthly_mortgage': 0,
+            'monthly_insurance': 0,
+            'monthly_taxes': 0,
+            'monthly_utilities': 0,
+            'monthly_hoa': 0,
+            'monthly_lawn': 0,
+            'monthly_other': 0,
+        },
+        'expenses': [
+            {'date': '', 'vendor': 'Lowes', 'description': 'Building Materials/Appliances', 'amount': 1712.84, 'category': 'Building Materials', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Plumbing', 'description': 'Draw 1 Paypal', 'amount': 3500, 'category': 'Labor - Plumbing', 'is_credit': False},
+            {'date': '', 'vendor': 'Super Steamer', 'description': 'Carpet Cleaning', 'amount': 75, 'category': 'Labor - General', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Plumbing', 'description': 'Draw 2 Paypal', 'amount': 3500, 'category': 'Labor - Plumbing', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Plumbing', 'description': 'Draw 3 Paypal', 'amount': 5000, 'category': 'Labor - Plumbing', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Plumbing', 'description': 'Draw 4 Paypal', 'amount': 3500, 'category': 'Labor - Plumbing', 'is_credit': False},
+            {'date': '', 'vendor': 'Echols Plumbing', 'description': 'Draw 5 Final Payment', 'amount': 3175, 'category': 'Labor - Plumbing', 'is_credit': False},
+            {'date': '', 'vendor': 'Homewisedocs', 'description': 'Condo Docs', 'amount': 326.95, 'category': 'Permits', 'is_credit': False},
+        ],
+        'draws': [],
+        'mortgage_payments': [],
+    }
+    data['properties'].append(prop)
+    save_data(data)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -515,6 +573,7 @@ def portfolio_summary():
 # ---------------------------------------------------------------------------
 seed_willowbrook()
 seed_second_property()
+seed_third_property()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))
