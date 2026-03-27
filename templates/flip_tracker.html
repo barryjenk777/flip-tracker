@@ -1654,7 +1654,7 @@ function renderTimeline(prop, m) {
     else phases.push({ label: 'List', date: '', done: false, current: false, field: 'listing_date' });
     if (prop.sale_date) phases.push({ label: 'Sold', date: prop.sale_date, done: true, field: 'sale_date' });
     else {
-        phases.push({ label: 'Under Contract', date: '', done: false, field: null });
+        phases.push({ label: 'Under Contract', date: prop.under_contract_date || '', done: !!prop.under_contract_date, field: 'under_contract_date' });
         phases.push({ label: 'Close', date: prop.estimated_sale_date || '', done: false, field: 'estimated_sale_date' });
     }
 
