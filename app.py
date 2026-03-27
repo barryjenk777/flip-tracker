@@ -227,8 +227,10 @@ def calc_property_metrics(prop):
         flags.append({'type': 'danger', 'msg': 'Profit below $15K minimum floor'})
     if total_cost_to_arv > 85 and arv > 0:
         flags.append({'type': 'danger', 'msg': f'Total cost at {total_cost_to_arv:.0f}% of ARV (>85%)'})
-    if passes_70_rule is False:
-        flags.append({'type': 'warning', 'msg': f'Purchase exceeds 70% rule MAO by ${purchase_price - mao:,.0f}'})
+    if passes_70_rule is False and gross_profit < 30000:
+        flags.append({'type': 'warning', 'msg': f'Purchase exceeds 70% rule MAO by ${purchase_price - mao:,.0f} — thin margins'})
+    elif passes_70_rule is False and gross_profit >= 30000:
+        flags.append({'type': 'good', 'msg': f'Bought ${purchase_price - mao:,.0f} over 70% MAO but still profitable ({profit_margin:.0f}% margin)'})
     if contingency_pct < 10:
         flags.append({'type': 'warning', 'msg': 'Contingency below 10% — risky'})
     if dom > 60:
