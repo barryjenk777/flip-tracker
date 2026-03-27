@@ -543,6 +543,8 @@
             <span class="subtitle">Investment Dashboard</span>
         </div>
         <div class="header-actions">
+            <button class="btn btn-secondary" onclick="window.location='/api/export/csv'" title="Download CSV backup">&#128190; Backup CSV</button>
+            <button class="btn btn-secondary" onclick="window.location='/api/export/json'" title="Download JSON backup">&#128190; Backup JSON</button>
             <button class="btn btn-secondary" onclick="showAddProperty()">+ Add Property</button>
         </div>
     </div>
@@ -1037,6 +1039,68 @@ async function deleteMortgage(idx) {
     await loadFlips();
 }
 
+async function updateExpense(origIdx, field, value) {
+    const prop = getSelected();
+    if (!prop) return;
+    const expenses = [...(prop.expenses || [])];
+    if (field === 'amount') value = parseFloat(value) || 0;
+    if (field === 'is_credit') value = value === 'true';
+    expenses[origIdx][field] = value;
+    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ expenses }) });
+    await loadFlips();
+}
+
+async function updateDraw(idx, field, value) {
+    const prop = getSelected();
+    if (!prop) return;
+    const draws = [...(prop.draws || [])];
+    if (field === 'amount') value = parseFloat(value) || 0;
+    draws[idx][field] = value;
+    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ draws }) });
+    await loadFlips();
+}
+
+async function updateMortgage(idx, field, value) {
+    const prop = getSelected();
+    if (!prop) return;
+    const mortgage_payments = [...(prop.mortgage_payments || [])];
+    if (field === 'amount') value = parseFloat(value) || 0;
+    mortgage_payments[idx][field] = value;
+    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mortgage_payments }) });
+    await loadFlips();
+}
+
+function makeEditable(td, origIdx, field, currentVal, type, updateFn) {
+    if (td.querySelector('input,select')) return;
+    updateFn = updateFn || 'expense';
+    const saveFn = updateFn === 'draw' ? updateDraw : updateFn === 'mortgage' ? updateMortgage : updateExpense;
+    const isCategory = field === 'category';
+    if (isCategory) {
+        const cats = ['Labor - Plumbing','Labor - Electrical','Labor - HVAC','Labor - Kitchen','Labor - General','Building Materials','Flooring','Paint','Roofing','Windows & Doors','Landscaping','Permits','Marketing','Staging','Repairs - Pest','Repairs - Foundation','Dumpster','Appliances','Other'];
+        const sel = document.createElement('select');
+        sel.style.cssText = 'background:var(--bg-primary);border:1px solid var(--accent);border-radius:4px;padding:4px 8px;color:var(--text-primary);font-size:13px;width:100%;';
+        cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; if (c === currentVal) o.selected = true; sel.appendChild(o); });
+        td.textContent = '';
+        td.appendChild(sel);
+        sel.focus();
+        sel.onchange = () => saveFn(origIdx, field, sel.value);
+        sel.onblur = () => saveFn(origIdx, field, sel.value);
+        return;
+    }
+    const inp = document.createElement('input');
+    inp.type = type || 'text';
+    inp.value = currentVal || '';
+    inp.style.cssText = 'background:var(--bg-primary);border:1px solid var(--accent);border-radius:4px;padding:4px 8px;color:var(--text-primary);font-size:13px;width:100%;';
+    if (type === 'number') inp.step = '0.01';
+    td.textContent = '';
+    td.appendChild(inp);
+    inp.focus();
+    inp.select();
+    const save = () => saveFn(origIdx, field, inp.value);
+    inp.onblur = save;
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') loadFlips(); };
+}
+
 async function submitNewProperty() {
     const prop = {
         address: $('np-address').value,
@@ -1506,11 +1570,11 @@ function renderExpenses() {
     const sortedExpenses = (prop.expenses || []).map((e, origIdx) => ({...e, origIdx})).sort((a,b) => (a.date||'').localeCompare(b.date||''));
     tbody.innerHTML = sortedExpenses.map(e => `
         <tr${e.is_credit ? ' style="color:var(--green)"' : ''}>
-            <td>${e.date || '—'}</td>
-            <td>${e.vendor || ''}</td>
-            <td>${e.description || ''}</td>
-            <td>${e.category || ''}</td>
-            <td style="text-align:right;font-weight:600">${e.is_credit ? '-' : ''}${fmtD(e.amount)}</td>
+            <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'date','${(e.date||'').replace(/'/g,"\\'")}','date')">${e.date || '—'}</td>
+            <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'vendor','${(e.vendor||'').replace(/'/g,"\\'")}')">${e.vendor || ''}</td>
+            <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'description','${(e.description||'').replace(/'/g,"\\'")}')">${e.description || ''}</td>
+            <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'category','${(e.category||'').replace(/'/g,"\\'")}')">${e.category || ''}</td>
+            <td style="text-align:right;font-weight:600;cursor:pointer" onclick="makeEditable(this,${e.origIdx},'amount','${e.amount}','number')">${e.is_credit ? '-' : ''}${fmtD(e.amount)}</td>
             <td style="text-align:center"><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.origIdx})" style="padding:2px 8px;font-size:11px;">X</button></td>
         </tr>
     `).join('');
@@ -1519,8 +1583,9 @@ function renderExpenses() {
     $('draw-blocks').innerHTML = (prop.draws || []).map((d, i) => `
         <div class="draw-block received">
             <div class="draw-num">Draw ${i+1}</div>
-            <div class="draw-amt">${fmt(d.amount)}</div>
-            <div class="draw-date">${d.date || ''} ${d.description ? '— ' + d.description : ''}</div>
+            <div class="draw-amt" style="cursor:pointer" onclick="makeEditable(this,${i},'amount','${d.amount}','number','draw')">${fmt(d.amount)}</div>
+            <div class="draw-date" style="cursor:pointer" onclick="makeEditable(this,${i},'date','${(d.date||'').replace(/'/g,"\\'")}','date','draw')">${d.date || '—'}</div>
+            <div class="draw-desc" style="cursor:pointer" onclick="makeEditable(this,${i},'description','${(d.description||'').replace(/'/g,"\\'")}','text','draw')">${d.description || '(click to edit)'}</div>
             <button class="btn btn-danger btn-sm" onclick="deleteDraw(${i})" style="margin-top:6px;padding:2px 8px;font-size:10px;">Delete</button>
         </div>
     `).join('');
@@ -1533,7 +1598,7 @@ function renderExpenses() {
     // Mortgages
     const mtbody = $('mortgage-table').querySelector('tbody');
     mtbody.innerHTML = (prop.mortgage_payments || []).map((mp, i) => `
-        <tr><td>${mp.date || '—'}</td><td style="text-align:right;font-weight:600">${fmtD(mp.amount)}</td><td style="text-align:center"><button class="btn btn-danger btn-sm" onclick="deleteMortgage(${i})" style="padding:2px 8px;font-size:11px;">X</button></td></tr>
+        <tr><td style="cursor:pointer" onclick="makeEditable(this,${i},'date','${(mp.date||'').replace(/'/g,"\\'")}','date','mortgage')">${mp.date || '—'}</td><td style="text-align:right;font-weight:600;cursor:pointer" onclick="makeEditable(this,${i},'amount','${mp.amount}','number','mortgage')">${fmtD(mp.amount)}</td><td style="text-align:center"><button class="btn btn-danger btn-sm" onclick="deleteMortgage(${i})" style="padding:2px 8px;font-size:11px;">X</button></td></tr>
     `).join('') + `<tr style="border-top:2px solid var(--border);font-weight:700;"><td>Total</td><td style="text-align:right">${fmtD(m.total_mortgage_payments)}</td><td></td></tr>`;
 }
 

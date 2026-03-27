@@ -541,6 +541,89 @@ def update_flip_settings():
     return jsonify(data['settings'])
 
 
+@app.route('/api/export/csv')
+def export_csv():
+    """Export all flip data as CSV for backup."""
+    import csv
+    import io
+    data = load_data()
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Properties sheet
+    writer.writerow(['=== PROPERTIES ==='])
+    writer.writerow(['Address', 'City', 'State', 'ZIP', 'Purchase Price', 'ARV', 'Sale Price',
+                     'Acq Closing', 'Settlement', 'EMD', 'Rehab Budget', 'Purchase Date',
+                     'Sale Date', 'Listing Date', 'Commission %', 'Closing %', 'Split %',
+                     'Monthly Mortgage', 'Monthly Insurance', 'Monthly Taxes', 'Monthly Utilities',
+                     'Status', 'Notes'])
+    for prop in data['properties']:
+        hc = prop.get('holding_costs', {})
+        m = calc_property_metrics(prop)
+        writer.writerow([
+            prop.get('address', ''), prop.get('city', ''), prop.get('state', ''), prop.get('zip', ''),
+            prop.get('purchase_price', 0), prop.get('arv', 0), prop.get('sale_price', 0),
+            prop.get('acq_closing_cost', 0), prop.get('purchase_settlement', 0), prop.get('emd', 0),
+            prop.get('rehab_budget', 0), prop.get('purchase_date', ''), prop.get('sale_date', ''),
+            prop.get('listing_date', ''), prop.get('sale_commission_pct', 4),
+            prop.get('sale_closing_cost_pct', 1.5), prop.get('partner_split_pct', 50),
+            hc.get('monthly_mortgage', 0), hc.get('monthly_insurance', 0),
+            hc.get('monthly_taxes', 0), hc.get('monthly_utilities', 0),
+            m['status'], prop.get('notes', ''),
+        ])
+
+    writer.writerow([])
+    writer.writerow(['=== EXPENSES ==='])
+    writer.writerow(['Property', 'Date', 'Vendor', 'Description', 'Category', 'Amount', 'Is Credit'])
+    for prop in data['properties']:
+        for e in prop.get('expenses', []):
+            writer.writerow([prop.get('address', ''), e.get('date', ''), e.get('vendor', ''),
+                           e.get('description', ''), e.get('category', ''), e.get('amount', 0),
+                           e.get('is_credit', False)])
+
+    writer.writerow([])
+    writer.writerow(['=== DRAWS ==='])
+    writer.writerow(['Property', 'Date', 'Description', 'Amount'])
+    for prop in data['properties']:
+        for d in prop.get('draws', []):
+            writer.writerow([prop.get('address', ''), d.get('date', ''), d.get('description', ''), d.get('amount', 0)])
+
+    writer.writerow([])
+    writer.writerow(['=== MORTGAGE PAYMENTS ==='])
+    writer.writerow(['Property', 'Date', 'Amount'])
+    for prop in data['properties']:
+        for mp in prop.get('mortgage_payments', []):
+            writer.writerow([prop.get('address', ''), mp.get('date', ''), mp.get('amount', 0)])
+
+    writer.writerow([])
+    writer.writerow(['=== CALCULATED METRICS ==='])
+    writer.writerow(['Property', 'Total Rehab', 'Total Costs', 'Gross Profit', 'ROI %', 'Profit Margin %', 'Cash In Deal', 'Partner Share', 'Days Held'])
+    for prop in data['properties']:
+        m = calc_property_metrics(prop)
+        writer.writerow([prop.get('address', ''), m['total_rehab'], m['total_costs'], m['gross_profit'],
+                        round(m['roi'], 2), round(m['profit_margin'], 2), m['cash_in_deal'],
+                        m['partner_share'], m['days_held']])
+
+    from flask import Response
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=flip-tracker-backup-{datetime.now().strftime("%Y%m%d")}.csv'}
+    )
+
+
+@app.route('/api/export/json')
+def export_json():
+    """Export raw JSON data for complete backup."""
+    data = load_data()
+    from flask import Response
+    return Response(
+        json.dumps(data, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment; filename=flip-tracker-backup-{datetime.now().strftime("%Y%m%d")}.json'}
+    )
+
+
 @app.route('/api/flips/portfolio', methods=['GET'])
 def portfolio_summary():
     data = load_data()
