@@ -551,6 +551,7 @@
         <!-- Tab Bar -->
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('portfolio')">Portfolio Overview</button>
+            <button class="tab-btn" onclick="switchTab('summary')">2026 Summary</button>
             <button class="tab-btn" onclick="switchTab('property')">Property Detail</button>
             <button class="tab-btn" onclick="switchTab('expenses')">Expenses & Draws</button>
             <button class="tab-btn" onclick="switchTab('analysis')">Deal Analysis</button>
@@ -571,6 +572,11 @@
                 <div class="card-title">Risk Alerts & Action Items</div>
                 <div id="all-flags" class="flag-list"></div>
             </div>
+        </div>
+
+        <!-- ===== 2026 SUMMARY TAB ===== -->
+        <div class="tab-content" id="tab-summary">
+            <div id="summary-content"></div>
         </div>
 
         <!-- ===== PROPERTY DETAIL TAB ===== -->
@@ -1105,6 +1111,7 @@ function renderPropertySelector(containerId) {
 // ---- Render ----
 function renderAll() {
     renderPortfolio();
+    renderSummary2026();
     renderPropertySelector('property-selector');
     renderPropertySelector('expense-selector');
     renderPropertySelector('analysis-selector');
@@ -1157,6 +1164,181 @@ function renderPortfolio() {
     const allFlags = props.flatMap(p => p.metrics.flags.map(f => ({...f, address: p.address})));
     $('all-flags').innerHTML = allFlags.length ? allFlags.map(f => `<div class="flag ${f.type}"><span class="flag-icon">${f.type==='danger'?'&#9888;':'&#9679;'}</span><strong>${f.address}:</strong> ${f.msg}</div>`).join('') :
         '<div class="flag good"><span class="flag-icon">&#10003;</span> No risk flags — looking good!</div>';
+}
+
+// ---- 2026 SUMMARY TAB ----
+function renderSummary2026() {
+    const props = flipData.properties;
+    if (!props.length) { $('summary-content').innerHTML = '<div style="color:var(--text-muted)">No properties yet.</div>'; return; }
+
+    const allMetrics = props.map((p, i) => ({ ...p, m: p.metrics, idx: i }));
+
+    // Totals
+    const totalRevenue = allMetrics.reduce((s, p) => s + p.m.effective_sale, 0);
+    const totalPurchase = allMetrics.reduce((s, p) => s + p.m.purchase_price, 0);
+    const totalRehab = allMetrics.reduce((s, p) => s + p.m.total_rehab, 0);
+    const totalCommissions = allMetrics.reduce((s, p) => s + p.m.sale_commission, 0);
+    const totalClosing = allMetrics.reduce((s, p) => s + (p.m.sale_closing + p.m.acq_closing_cost), 0);
+    const totalHolding = allMetrics.reduce((s, p) => s + p.m.total_holding_cost, 0);
+    const totalCosts = allMetrics.reduce((s, p) => s + p.m.total_costs, 0);
+    const totalProfit = allMetrics.reduce((s, p) => s + p.m.gross_profit, 0);
+    const totalInvested = allMetrics.reduce((s, p) => s + p.m.cash_in_deal, 0);
+    const totalSplit = totalProfit * 0.5;
+    const avgROI = totalInvested > 0 ? (totalProfit / totalInvested * 100) : 0;
+    const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue * 100) : 0;
+
+    // Per-property table rows
+    const rows = allMetrics.map(p => `
+        <tr>
+            <td style="font-weight:600;">${p.address}</td>
+            <td>${p.city}, ${p.state}</td>
+            <td style="text-align:right">${fmt(p.m.purchase_price)}</td>
+            <td style="text-align:right">${fmt(p.m.effective_sale)}</td>
+            <td style="text-align:right">${fmt(p.m.total_rehab)}</td>
+            <td style="text-align:right">${fmt(p.m.total_costs)}</td>
+            <td style="text-align:right;font-weight:700;color:${p.m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(p.m.gross_profit)}</td>
+            <td style="text-align:right;color:var(--accent)">${fmt(p.m.partner_share)}</td>
+            <td style="text-align:right">${pct(p.m.roi)}</td>
+            <td style="text-align:center"><span class="status-badge ${p.m.status}">${p.m.status}</span></td>
+        </tr>
+    `).join('');
+
+    // Profit bar chart per property
+    const maxProfit = Math.max(...allMetrics.map(p => Math.abs(p.m.gross_profit)), 1);
+    const profitBars = allMetrics.map((p, i) => {
+        const w = (Math.abs(p.m.gross_profit) / maxProfit * 100);
+        const color = p.m.gross_profit >= 0 ? CAT_COLORS[i % CAT_COLORS.length] : 'var(--red)';
+        return `<div class="bar-row">
+            <div class="bar-label">${p.address}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.max(w,5)}%;background:${color}">${fmt(p.m.gross_profit)}</div></div>
+            <div class="bar-amount">${pct(p.m.profit_margin)}</div>
+        </div>`;
+    }).join('');
+
+    // Cost breakdown stacked bar data
+    const costCategories = [
+        { label: 'Purchase', total: totalPurchase, color: '#4fc3f7' },
+        { label: 'Rehab', total: totalRehab, color: '#ffa726' },
+        { label: 'Commissions', total: totalCommissions, color: '#ef5350' },
+        { label: 'Closing Costs', total: totalClosing, color: '#ab47bc' },
+        { label: 'Holding Costs', total: totalHolding, color: '#ff7043' },
+    ];
+    const costBars = costCategories.map(c => {
+        const w = totalCosts > 0 ? (c.total / totalRevenue * 100) : 0;
+        return `<div class="bar-row">
+            <div class="bar-label">${c.label}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.max(w,3)}%;background:${c.color}">${w > 5 ? fmt(c.total) : ''}</div></div>
+            <div class="bar-amount">${fmt(c.total)}</div>
+        </div>`;
+    }).join('');
+
+    $('summary-content').innerHTML = `
+        <h2 style="font-size:22px;font-weight:800;margin-bottom:4px;color:var(--accent);">2026 Year-to-Date Summary</h2>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;">${props.length} flips — Calendar Year 2026</p>
+
+        <!-- Top-line numbers -->
+        <div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+            <div class="stat-card green">
+                <div class="stat-label">Net Profit (All Flips)</div>
+                <div class="stat-value">${fmt(totalProfit)}</div>
+                <div class="stat-sub">${props.length} properties</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-label">Your Split (50%)</div>
+                <div class="stat-value">${fmt(totalSplit)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Revenue</div>
+                <div class="stat-value">${fmt(totalRevenue)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Costs</div>
+                <div class="stat-value">${fmt(totalCosts)}</div>
+            </div>
+            <div class="stat-card ${avgROI >= 20 ? 'green' : avgROI >= 10 ? 'yellow' : 'red'}">
+                <div class="stat-label">Avg ROI</div>
+                <div class="stat-value">${pct(avgROI)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Profit Margin</div>
+                <div class="stat-value">${pct(avgMargin)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Cash Invested</div>
+                <div class="stat-value">${fmt(totalInvested)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Rehab Spend</div>
+                <div class="stat-value">${fmt(totalRehab)}</div>
+            </div>
+        </div>
+
+        <!-- Profit by Property -->
+        <div class="card">
+            <div class="card-title">Profit by Property</div>
+            <div class="bar-chart">${profitBars}</div>
+        </div>
+
+        <!-- Cost Breakdown -->
+        <div class="card">
+            <div class="card-title">Where the Money Goes (All Properties Combined)</div>
+            <div class="bar-chart">${costBars}</div>
+            <div style="margin-top:12px;display:flex;justify-content:space-between;font-size:13px;padding-top:8px;border-top:1px solid var(--border);">
+                <span style="color:var(--text-secondary);">Total Revenue: <strong style="color:var(--green)">${fmt(totalRevenue)}</strong></span>
+                <span style="color:var(--text-secondary);">Total Costs: <strong style="color:var(--red)">${fmt(totalCosts)}</strong></span>
+                <span style="color:var(--text-secondary);">Net Profit: <strong style="color:var(--green)">${fmt(totalProfit)}</strong> (${pct(avgMargin)} margin)</span>
+            </div>
+        </div>
+
+        <!-- Per-property table -->
+        <div class="card">
+            <div class="card-title">Property-by-Property Breakdown</div>
+            <div style="overflow-x:auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Property</th>
+                        <th>Location</th>
+                        <th style="text-align:right">Purchase</th>
+                        <th style="text-align:right">Sale/ARV</th>
+                        <th style="text-align:right">Rehab</th>
+                        <th style="text-align:right">All-In Cost</th>
+                        <th style="text-align:right">Profit</th>
+                        <th style="text-align:right">Your Split</th>
+                        <th style="text-align:right">ROI</th>
+                        <th style="text-align:center">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                    <tr style="border-top:2px solid var(--accent);font-weight:700;background:var(--bg-primary);">
+                        <td colspan="2">TOTALS</td>
+                        <td style="text-align:right">${fmt(totalPurchase)}</td>
+                        <td style="text-align:right">${fmt(totalRevenue)}</td>
+                        <td style="text-align:right">${fmt(totalRehab)}</td>
+                        <td style="text-align:right">${fmt(totalCosts)}</td>
+                        <td style="text-align:right;color:var(--green)">${fmt(totalProfit)}</td>
+                        <td style="text-align:right;color:var(--accent)">${fmt(totalSplit)}</td>
+                        <td style="text-align:right">${pct(avgROI)}</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+        </div>
+
+        <!-- Insights -->
+        <div class="card">
+            <div class="card-title">2026 Insights</div>
+            <div class="flag-list">
+                ${totalProfit > 0 ? `<div class="flag good"><span class="flag-icon">&#10003;</span> <strong>${fmt(totalProfit)}</strong> total net profit across ${props.length} flips in 2026.</div>` : ''}
+                <div class="insight-box"><strong>Avg profit per flip:</strong> ${fmt(totalProfit / props.length)} | <strong>Avg rehab per flip:</strong> ${fmt(totalRehab / props.length)}</div>
+                ${allMetrics.sort((a,b) => b.m.gross_profit - a.m.gross_profit).length ? `<div class="insight-box"><strong>Best performer:</strong> ${allMetrics[0].address} at ${fmt(allMetrics[0].m.gross_profit)} profit (${pct(allMetrics[0].m.roi)} ROI)</div>` : ''}
+                ${allMetrics.length > 1 ? `<div class="insight-box"><strong>Most efficient:</strong> ${allMetrics.sort((a,b) => b.m.profit_margin - a.m.profit_margin)[0].address} at ${pct(allMetrics[0].m.profit_margin)} profit margin</div>` : ''}
+                <div class="insight-box"><strong>Your 2026 earnings (50% split):</strong> ${fmt(totalSplit)}</div>
+            </div>
+        </div>
+    `;
 }
 
 // ---- PROPERTY DETAIL TAB ----
