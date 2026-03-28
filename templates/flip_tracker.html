@@ -2702,7 +2702,15 @@ async function analyzeProspect() {
 function clearAnalyzerForm() {
     ['qa-address','qa-city','qa-asking','qa-arv','qa-rehab','qa-prep','qa-rent','qa-beds','qa-baths','qa-sqft','qa-year','qa-mls','qa-asis','qa-discount','qa-acqclose','qa-holdmonths','qa-utilities','qa-landscape','qa-insurance','qa-taxes','qa-hardmoney','qa-settlement','qa-concessions','qa-commission','qa-pricereduction'].forEach(id => { if ($(id)) $(id).value = ''; });
     $('qa-state').value = 'VA';
+    $('qa-hm-rate').value = '11';
     $('prospect-results').style.display = 'none';
+    currentProspect = null;
+    // Reset button text
+    const analyzeBtn = document.querySelector('#tab-prospects .btn-primary[onclick*="analyzeProspect"]');
+    if (analyzeBtn) {
+        analyzeBtn.textContent = 'Analyze This Deal';
+        analyzeBtn.style.background = '';
+    }
 }
 
 function renderProspectResults(p) {
@@ -2862,7 +2870,66 @@ async function deleteProspect(id) {
 async function showProspectDetail(id) {
     if (isDragging) return;
     const p = prospectData.prospects.find(x => x.id === id);
-    if (p) { currentProspect = p; renderProspectResults(p); }
+    if (!p) return;
+    currentProspect = p;
+    // Load data back into the form for editing
+    loadProspectIntoForm(p);
+    renderProspectResults(p);
+    // Scroll to the form
+    document.querySelector('#tab-prospects .card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function loadProspectIntoForm(p) {
+    // Property info
+    if ($('qa-address')) $('qa-address').value = p.address || '';
+    if ($('qa-city')) $('qa-city').value = p.city || '';
+    if ($('qa-state')) $('qa-state').value = p.state || 'VA';
+    if ($('qa-beds')) $('qa-beds').value = p.beds || '';
+    if ($('qa-baths')) $('qa-baths').value = p.baths || '';
+    if ($('qa-sqft')) $('qa-sqft').value = p.sqft || '';
+    if ($('qa-year')) $('qa-year').value = p.year_built || '';
+    if ($('qa-source')) $('qa-source').value = p.source || 'MLS';
+
+    // Property value
+    if ($('qa-arv')) $('qa-arv').value = p.arv || '';
+
+    // Rehab
+    if ($('qa-rehab')) $('qa-rehab').value = p.estimated_rehab || '';
+
+    // Purchase offer
+    if ($('qa-discount')) $('qa-discount').value = p.market_discount_pct ? (p.market_discount_pct * 100) : '';
+    if ($('qa-asking')) $('qa-asking').value = p.asking_price || '';
+    if ($('qa-acqclose')) $('qa-acqclose').value = p.acq_closing_costs || '';
+
+    // Holding costs
+    if ($('qa-holdmonths')) $('qa-holdmonths').value = p.holding_months || '';
+    if ($('qa-utilities')) $('qa-utilities').value = p.monthly_utilities || '';
+    if ($('qa-landscape')) $('qa-landscape').value = p.monthly_landscape || '';
+    if ($('qa-insurance')) $('qa-insurance').value = p.monthly_insurance || '';
+    if ($('qa-taxes')) $('qa-taxes').value = p.monthly_taxes || '';
+    if ($('qa-hm-rate')) $('qa-hm-rate').value = p.hard_money_rate || 11;
+    if ($('qa-hardmoney')) $('qa-hardmoney').value = p.monthly_hard_money || '';
+
+    // Selling costs
+    if ($('qa-settlement')) $('qa-settlement').value = p.seller_settlement_pct ? (p.seller_settlement_pct * 100) : '';
+    if ($('qa-concessions')) $('qa-concessions').value = p.seller_concessions || '';
+    if ($('qa-commission')) $('qa-commission').value = p.commission_pct ? (p.commission_pct * 100) : '';
+
+    // Hidden fields
+    if ($('qa-mls')) $('qa-mls').value = p.mls_list_price || '';
+    if ($('qa-asis')) $('qa-asis').value = p.as_is_value || '';
+    if ($('qa-prep')) $('qa-prep').value = p.initial_prep || '';
+    if ($('qa-rent')) $('qa-rent').value = p.monthly_rent_estimate || '';
+    if ($('qa-pricereduction')) $('qa-pricereduction').value = p.price_reduction || '';
+
+    // Update button text to show we're editing
+    const analyzeBtn = document.querySelector('#tab-prospects .btn-primary[onclick*="analyzeProspect"]');
+    if (analyzeBtn) {
+        analyzeBtn.textContent = 'Update Deal';
+        analyzeBtn.style.background = 'var(--accent)';
+    }
+
+    autoCalcHardMoney();
 }
 
 function advanceStage(id, currentStage) {

@@ -1127,15 +1127,14 @@ def add_prospect():
     data = load_data()
     p = request.json
     address = (p.get('address', '') or '').strip().lower()
-    city = (p.get('city', '') or '').strip().lower()
 
-    # If same address+city already exists, UPDATE instead of creating duplicate
+    # If same address already exists, UPDATE instead of creating duplicate
+    # Match on address alone — ignore city since user might type it differently
     existing = None
     if address:
         for i, existing_p in enumerate(data.get('prospects', [])):
             ex_addr = (existing_p.get('address', '') or '').strip().lower()
-            ex_city = (existing_p.get('city', '') or '').strip().lower()
-            if ex_addr == address and ex_city == city:
+            if ex_addr == address:
                 existing = i
                 break
 
