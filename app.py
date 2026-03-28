@@ -598,7 +598,8 @@ def parse_closing_disclosure(pdf_bytes):
             'gross amount', 'summary', 'subtotal',
             'contract sales', 'personal property',
             'constuc on draw', 'construction draw',  # lender draws, not closing costs
-            'commission to', 'commission paid',  # commissions tracked separately
+            'commission to', 'commission paid', 'commission',  # commissions tracked separately
+            'better homes', 'keller williams', 'realty', 'remax', 're/max',  # brokerage names
             'debt paydown', 'american express',  # personal payoffs
             'payoff of', 'loan payoff',
         ]
