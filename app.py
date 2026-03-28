@@ -557,10 +557,17 @@ def parse_closing_disclosure(pdf_bytes):
                     break
 
         # Extract cash to close — try multiple patterns
+        # HUD-1 format: "Cash From Borrower $XX,XXX.XX" or "Cash From X To Seller $XX,XXX.XX"
+        # CD format: "Cash to Close $XX,XXX.XX"
         for pattern in [
             r'Cash\s*to\s*Close\s*\$?\s*([\d,]+\.?\d*)',
+            r'Cash\s*From\s*(?:X\s*To\s*)?Seller\s*\$?\s*([\d,]+\.?\d*)',
+            r'Cash\s*[Ff]rom\s*Borrower\s*\$?\s*([\d,]+\.?\d*)',
             r'Cash\s*(?:from|to)\s*(?:Borrower|Seller)\s*\$?\s*([\d,]+\.?\d*)',
             r'Due\s*from\s*Borrower\s*at\s*Closing\s*\$?\s*([\d,]+\.?\d*)',
+            r'303\.?\s*Cash\s*X?\s*[Ff]rom\s*(?:To\s*)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
+            r'TOTAL\s*CLOSING\s*COSTS?\s*\$?\s*([\d,]+\.?\d*)',
+            r'Se\s*lement\s*charges\s*to\s*borrower.*?\$?\s*([\d,]+\.?\d*)',
         ]:
             m = re.search(pattern, all_text, re.IGNORECASE)
             if m:
@@ -588,6 +595,12 @@ def parse_closing_disclosure(pdf_bytes):
             'seller credit', 'seller-credit', 'final',
             'existing loan', 'first mortgage', 'second mortgage',
             'payoff amount', 'amount owed', 'proration',
+            'gross amount', 'summary', 'subtotal',
+            'contract sales', 'personal property',
+            'constuc on draw', 'construction draw',  # lender draws, not closing costs
+            'commission to', 'commission paid',  # commissions tracked separately
+            'debt paydown', 'american express',  # personal payoffs
+            'payoff of', 'loan payoff',
         ]
 
         # Only include items that look like actual fees/charges (typically under $50K)
@@ -616,6 +629,17 @@ def parse_closing_disclosure(pdf_bytes):
                 'amount': amount,
                 'tax_category': tax_cat,
             })
+
+        # Deduplicate: remove items with same amount + similar description
+        seen = set()
+        deduped = []
+        for item in result['line_items']:
+            # Create a key from amount + first 20 chars of description
+            key = f"{item['amount']:.2f}_{item['description'][:20].lower()}"
+            if key not in seen:
+                seen.add(key)
+                deduped.append(item)
+        result['line_items'] = deduped
 
         result['closing_costs_total'] = sum(item['amount'] for item in result['line_items'])
 
