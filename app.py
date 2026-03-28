@@ -45,6 +45,7 @@ EXPENSE_TAX_MAP = {
 
 # Closing Disclosure line item tax classification keywords
 CD_TAX_KEYWORDS = {
+    'originaon': 'Loan Costs - Capitalized',  # handles stripped ligature "ti"
     'origination': 'Loan Costs - Capitalized',
     'discount': 'Loan Costs - Capitalized',
     'processing': 'Loan Costs - Capitalized',
@@ -69,6 +70,17 @@ CD_TAX_KEYWORDS = {
     'tax': 'Property Tax - Capitalized',
     'escrow': 'Escrow - Capitalized',
     'hoa': 'HOA - Capitalized',
+    'water': 'Property Tax - Capitalized',
+    'sewer': 'Property Tax - Capitalized',
+    'admin fee': 'Title & Settlement - Capitalized',
+    'document prep': 'Title & Settlement - Capitalized',
+    'notary': 'Title & Settlement - Capitalized',
+    'wire': 'Title & Settlement - Capitalized',
+    'courier': 'Title & Settlement - Capitalized',
+    'interest': 'Prepaid Interest - Capitalized',
+    'daily interest': 'Prepaid Interest - Capitalized',
+    'selement': 'Title & Settlement - Capitalized',  # handles stripped ligature "ttl"
+    'preparaon': 'Title & Settlement - Capitalized',  # handles stripped ligature "ti"
 }
 
 # ---------------------------------------------------------------------------
@@ -510,22 +522,52 @@ def parse_closing_disclosure(pdf_bytes):
             text = page.extract_text() or ''
             all_text += text + '\n\n'
         pdf.close()
-        result['raw_text'] = all_text[:20000]  # cap stored text
 
-        # Extract loan amount
-        m = re.search(r'Loan\s*Amount\s*\$?([\d,]+\.?\d*)', all_text, re.IGNORECASE)
-        if m:
-            result['loan_amount'] = float(m.group(1).replace(',', ''))
+        # Clean up encoding issues (ligatures, special chars)
+        all_text = all_text.replace('\ufb01', 'fi').replace('\ufb02', 'fl')
+        all_text = all_text.replace('\ufb00', 'ff').replace('\ufb03', 'ffi').replace('\ufb04', 'ffl')
+        # Replace common PDF extraction artifacts
+        all_text = re.sub(r'[^\x00-\x7F]', '', all_text)  # strip non-ASCII
+        result['raw_text'] = all_text[:20000]
 
-        # Extract interest rate
-        m = re.search(r'Interest\s*Rate\s*([\d.]+)\s*%', all_text, re.IGNORECASE)
-        if m:
-            result['interest_rate'] = float(m.group(1))
+        # Extract loan amount — try multiple patterns
+        for pattern in [
+            r'Loan\s*Amount\s*\$?\s*([\d,]+\.?\d*)',
+            r'Amount\s*\$?\s*([\d,]{4,}\.?\d*)',
+            r'Principal.*?\$?\s*([\d,]{4,}\.\d{2})',
+        ]:
+            m = re.search(pattern, all_text, re.IGNORECASE)
+            if m:
+                val = float(m.group(1).replace(',', ''))
+                if val > 10000:  # must be a meaningful loan amount
+                    result['loan_amount'] = val
+                    break
 
-        # Extract cash to close
-        m = re.search(r'Cash\s*to\s*Close\s*\$?([\d,]+\.?\d*)', all_text, re.IGNORECASE)
-        if m:
-            result['cash_to_close'] = float(m.group(1).replace(',', ''))
+        # Extract interest rate — try multiple patterns
+        for pattern in [
+            r'Interest\s*Rate\s*[:\s]*([\d.]+)\s*%',
+            r'Rate\s*[:\s]*([\d.]+)\s*%',
+            r'([\d]{1,2}\.\d{1,4})\s*%',
+        ]:
+            m = re.search(pattern, all_text, re.IGNORECASE)
+            if m:
+                val = float(m.group(1))
+                if 1 < val < 30:  # reasonable interest rate range
+                    result['interest_rate'] = val
+                    break
+
+        # Extract cash to close — try multiple patterns
+        for pattern in [
+            r'Cash\s*to\s*Close\s*\$?\s*([\d,]+\.?\d*)',
+            r'Cash\s*(?:from|to)\s*(?:Borrower|Seller)\s*\$?\s*([\d,]+\.?\d*)',
+            r'Due\s*from\s*Borrower\s*at\s*Closing\s*\$?\s*([\d,]+\.?\d*)',
+        ]:
+            m = re.search(pattern, all_text, re.IGNORECASE)
+            if m:
+                val = float(m.group(1).replace(',', ''))
+                if val > 100:
+                    result['cash_to_close'] = val
+                    break
 
         # Extract line items — look for lines with dollar amounts
         # IMPORTANT: Filter out non-closing-cost items (sale price, loan amount, deposits, etc.)
