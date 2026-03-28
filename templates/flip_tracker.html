@@ -2637,10 +2637,14 @@ function initCdUpload(type) {
 
 function showCdReviewModal(data, type) {
     $('cd-review-title').textContent = `Review ${type === 'purchase' ? 'Purchase' : 'Sale'} Closing Disclosure`;
+    const effectiveRate = data.interest_rate > 0 ? data.interest_rate : 11;
+    _cdReviewData.loan_amount = data.loan_amount || 0;
+    _cdReviewData.interest_rate = effectiveRate;
+    _cdReviewData.cash_to_close = data.cash_to_close || 0;
     $('cd-review-summary').innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
             <div class="stat-card" style="padding:8px"><div class="stat-label" style="font-size:10px">Loan Amount</div><div style="font-weight:700">${fmt(data.loan_amount || 0)}</div></div>
-            <div class="stat-card" style="padding:8px"><div class="stat-label" style="font-size:10px">Interest Rate</div><div style="font-weight:700">${(data.interest_rate || 0).toFixed(2)}%</div></div>
+            <div class="stat-card" style="padding:8px"><div class="stat-label" style="font-size:10px">Interest Rate</div><div style="font-weight:700"><input type="number" id="cd-review-rate" value="${effectiveRate}" step="0.25" style="width:70px;text-align:center;font-size:16px;font-weight:700;background:var(--bg-secondary);border:1px solid var(--accent);color:var(--text-primary);padding:4px;border-radius:6px;">%</div></div>
             <div class="stat-card" style="padding:8px"><div class="stat-label" style="font-size:10px">Cash to Close</div><div style="font-weight:700">${fmt(data.cash_to_close || 0)}</div></div>
         </div>`;
 
@@ -2690,7 +2694,11 @@ async function confirmCdData() {
         await fetch(`/api/flips/${_cdReviewData.propId}/closing-disclosure`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: _cdReviewData.type, line_items: items }),
+            body: JSON.stringify({
+                type: _cdReviewData.type,
+                line_items: items,
+                interest_rate: parseFloat($('cd-review-rate')?.value) || 11,
+            }),
         });
         $('modal-cd-review').style.display = 'none';
         showToast(`${_cdReviewData.type === 'purchase' ? 'Purchase' : 'Sale'} Closing Disclosure saved!`);

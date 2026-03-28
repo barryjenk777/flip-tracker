@@ -1837,9 +1837,11 @@ def update_closing_disclosure(prop_id):
     if key not in prop:
         return jsonify({'error': f'No {cd_type} closing disclosure uploaded'}), 400
 
-    # Update line items with user corrections
+    # Update line items and interest rate with user corrections
     prop[key]['line_items'] = body.get('line_items', prop[key].get('line_items', []))
     prop[key]['closing_costs_total'] = sum(item.get('amount', 0) for item in prop[key]['line_items'])
+    if 'interest_rate' in body:
+        prop[key]['interest_rate'] = body['interest_rate']
 
     save_data(data)
     return jsonify({'success': True})
