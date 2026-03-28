@@ -2508,8 +2508,7 @@ function renderPropertyPnl(pnl, prop) {
         <tr><td style="height:12px" colspan="3"></td></tr>
 
         <tr><td class="pnl-grand">NET PROFIT (LOSS)</td><td></td><td class="pnl-amount pnl-grand ${pnl.net_profit >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.net_profit)}</td></tr>
-        <tr><td class="pnl-sub" style="color:var(--text-muted)">Est. Self-Employment Tax (${pnl.se_tax_rate}%)</td><td style="font-size:10px;color:var(--text-muted)">12.4% SS + 2.9% Medicare</td><td class="pnl-amount pnl-negative" style="font-size:12px">-${f(pnl.se_tax)}</td></tr>
-        <tr><td class="pnl-sub pnl-total">Net After SE Tax</td><td></td><td class="pnl-amount pnl-total ${pnl.net_after_se >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.net_after_se)}</td></tr>
+        <tr><td class="pnl-sub" style="color:var(--text-muted)" colspan="2">S-Corp distribution — SE tax does not apply (flows to K-1 as ordinary income)</td><td class="pnl-amount" style="font-size:11px;color:var(--text-muted)">See CPA</td></tr>
 
         <tr><td style="height:12px" colspan="3"></td></tr>
         <tr><td class="pnl-section" colspan="2">PARTNERSHIP SPLIT</td><td class="pnl-section"></td></tr>
@@ -2517,8 +2516,8 @@ function renderPropertyPnl(pnl, prop) {
         <tr><td class="pnl-sub">Partner B (${100 - pnl.partner_split_pct}%)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_b_share)}</td></tr>
     </table>
     <div class="pnl-disclaimer">
-        <strong>Tax Note:</strong> House flips are treated as dealer property (inventory) under IRS rules. All costs are capitalized to basis and deducted as COGS when sold.
-        Profits are ordinary income subject to self-employment tax. This is not tax advice — consult your CPA.<br>
+        <strong>Tax Note (S-Corp):</strong> House flips are treated as dealer property (inventory) under IRS rules. All costs are capitalized to basis and deducted as COGS when sold.
+        Profits are ordinary income distributed via K-1 — SE tax does not apply to S-Corp distributions. This is not tax advice — consult your CPA.<br>
         Generated ${new Date().toLocaleDateString()}
     </div>`;
 
@@ -2537,7 +2536,6 @@ function renderAnnualPnl(data) {
             <td class="pnl-amount">${f(p.total_cogs)}</td>
             <td class="pnl-amount">${f(p.total_selling)}</td>
             <td class="pnl-amount" style="font-weight:700;color:${p.net_profit >= 0 ? 'var(--green)' : 'var(--red)'}">${f(p.net_profit)}</td>
-            <td class="pnl-amount">${f(p.se_tax)}</td>
             <td class="pnl-amount pnl-positive">${f(p.partner_a_share)}</td>
         </tr>
     `).join('');
@@ -2554,14 +2552,14 @@ function renderAnnualPnl(data) {
         <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value">${fmt(t.net_sale_proceeds)}</div></div>
         <div class="stat-card"><div class="stat-label">Total COGS</div><div class="stat-value">${fmt(t.total_cogs)}</div></div>
         <div class="stat-card"><div class="stat-label">Total Selling</div><div class="stat-value">${fmt(t.total_selling)}</div></div>
-        <div class="stat-card red"><div class="stat-label">Est. SE Tax</div><div class="stat-value">${fmt(t.se_tax)}</div></div>
+        <div class="stat-card"><div class="stat-label">K-1 Ordinary Income</div><div class="stat-value" style="font-size:11px;color:var(--text-muted)">SE tax N/A</div></div>
     </div>
 
     <table class="data-table">
         <thead><tr>
             <th>Property</th><th style="text-align:right">Net Revenue</th><th style="text-align:right">COGS</th>
-            <th style="text-align:right">Selling</th><th style="text-align:right">Net Profit</th>
-            <th style="text-align:right">SE Tax</th><th style="text-align:right">Your Split</th>
+            <th style="text-align:right">Selling</th><th style="text-align:right">Net Profit (K-1)</th>
+            <th style="text-align:right">Your Split</th>
         </tr></thead>
         <tbody>
             ${rows}
@@ -2571,14 +2569,13 @@ function renderAnnualPnl(data) {
                 <td class="pnl-amount">${f(t.total_cogs)}</td>
                 <td class="pnl-amount">${f(t.total_selling)}</td>
                 <td class="pnl-amount" style="color:var(--green)">${f(t.net_profit)}</td>
-                <td class="pnl-amount">${f(t.se_tax)}</td>
                 <td class="pnl-amount" style="color:var(--accent)">${f(t.partner_a_share)}</td>
             </tr>
         </tbody>
     </table>
 
     <div class="pnl-disclaimer">
-        <strong>Schedule C Note:</strong> Each property's costs are capitalized as COGS. Net profit is ordinary income subject to 15.3% self-employment tax.
+        <strong>S-Corp Note:</strong> Each property's costs are capitalized as COGS. Net profit flows through as K-1 ordinary income — SE tax does not apply to S-Corp distributions.
         Export to CSV or PDF to provide to your bookkeeper/CPA for tax filing.<br>
         Generated ${new Date().toLocaleDateString()}
     </div>`;

@@ -443,9 +443,9 @@ def calc_pnl(prop, metrics):
     total_costs = total_cogs + total_selling
     net_profit = net_sale_proceeds - total_costs
 
-    # Self-employment tax estimate (15.3% — 12.4% SS + 2.9% Medicare)
-    se_tax = net_profit * 0.153 if net_profit > 0 else 0
-    net_after_se = net_profit - se_tax
+    # S-Corp: SE tax does not apply to distributions — profits flow to K-1 as ordinary income
+    se_tax = 0
+    net_after_se = net_profit
 
     # Partnership split
     split_pct = prop.get('partner_split_pct', 50) / 100
@@ -481,7 +481,7 @@ def calc_pnl(prop, metrics):
         # Totals
         'total_costs': total_costs,
         'net_profit': net_profit,
-        'se_tax_rate': 15.3,
+        'se_tax_rate': 0,
         'se_tax': se_tax,
         'net_after_se': net_after_se,
         'partner_a_share': net_profit * split_pct,
@@ -716,8 +716,7 @@ def generate_pnl_csv_rows(pnl, prop):
     rows.append(['TOTAL ALL COSTS', '', f"{pnl['total_costs']:.2f}"])
     rows.append([])
     rows.append(['NET PROFIT (LOSS)', '', f"{pnl['net_profit']:.2f}"])
-    rows.append([f"Est. Self-Employment Tax ({pnl['se_tax_rate']}%)", '', f"{pnl['se_tax']:.2f}"])
-    rows.append(['Net After SE Tax', '', f"{pnl['net_after_se']:.2f}"])
+    rows.append(['S-Corp Distribution (K-1 ordinary income — SE tax does not apply)', '', ''])
     rows.append([])
     rows.append([f"Partner A ({pnl['partner_split_pct']}%)", '', f"{pnl['partner_a_share']:.2f}"])
     rows.append([f"Partner B ({100 - pnl['partner_split_pct']}%)", '', f"{pnl['partner_b_share']:.2f}"])
@@ -1574,7 +1573,7 @@ def export_annual_pnl_csv():
     writer.writerow(['Total COGS', '', f"{grand_totals['cogs']:.2f}"])
     writer.writerow(['Total Selling Costs', '', f"{grand_totals['selling']:.2f}"])
     writer.writerow(['Total Net Profit', '', f"{grand_totals['profit']:.2f}"])
-    writer.writerow(['Total Est. SE Tax', '', f"{grand_totals['se_tax']:.2f}"])
+    writer.writerow(['S-Corp K-1 ordinary income — SE tax does not apply', '', ''])
 
     resp = Response(output.getvalue(), mimetype='text/csv')
     resp.headers['Content-Disposition'] = f'attachment; filename=Annual_PnL_{year}.csv'
@@ -1688,8 +1687,7 @@ def generate_pnl_pdf(pnl, prop):
     data.append([P('TOTAL ALL COSTS', cell_bold), '', A(pnl['total_costs'], True)])
     data.append(['', '', ''])
     data.append([P('NET PROFIT (LOSS)', cell_bold), '', A(pnl['net_profit'], True)])
-    data.append([P(f"Est. Self-Employment Tax ({pnl['se_tax_rate']}%)", cell_indent), P('12.4% SS + 2.9% Medicare', cell_sub), A(pnl['se_tax'])])
-    data.append([P('Net After SE Tax', cell_indent), '', A(pnl['net_after_se'], True)])
+    data.append([P('S-Corp Distribution', cell_indent), P('K-1 ordinary income — SE tax does not apply', cell_sub), P('See CPA', cell_sub)])
     data.append(['', '', ''])
     data.append([P('PARTNERSHIP SPLIT', cell_bold), '', ''])
     data.append([P(f"Partner A ({pnl['partner_split_pct']}%)", cell_indent), '', A(pnl['partner_a_share'])])
@@ -1754,9 +1752,9 @@ def generate_annual_pnl_pdf(year, all_pnls):
     elements.append(Spacer(1, 16))
 
     # Summary table
-    header = ['Property', 'Sale Price', 'COGS', 'Selling', 'Net Profit', 'SE Tax']
+    header = ['Property', 'Sale Price', 'COGS', 'Selling', 'Net Profit (K-1)']
     data = [header]
-    totals = [0, 0, 0, 0, 0]
+    totals = [0, 0, 0, 0]
     for pnl, prop in all_pnls:
         data.append([
             prop.get('address', ''),
@@ -1764,16 +1762,14 @@ def generate_annual_pnl_pdf(year, all_pnls):
             fmt(pnl['total_cogs']),
             fmt(pnl['total_selling']),
             fmt(pnl['net_profit']),
-            fmt(pnl['se_tax']),
         ])
         totals[0] += pnl['net_sale_proceeds']
         totals[1] += pnl['total_cogs']
         totals[2] += pnl['total_selling']
         totals[3] += pnl['net_profit']
-        totals[4] += pnl['se_tax']
-    data.append(['TOTALS', fmt(totals[0]), fmt(totals[1]), fmt(totals[2]), fmt(totals[3]), fmt(totals[4])])
+    data.append(['TOTALS', fmt(totals[0]), fmt(totals[1]), fmt(totals[2]), fmt(totals[3])])
 
-    table = Table(data, colWidths=[2.0 * inch, 1.1 * inch, 1.1 * inch, 1.0 * inch, 1.1 * inch, 0.9 * inch])
+    table = Table(data, colWidths=[2.5 * inch, 1.1 * inch, 1.1 * inch, 1.0 * inch, 1.2 * inch])
     style_cmds = [
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
