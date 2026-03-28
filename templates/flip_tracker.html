@@ -535,6 +535,20 @@
         ::-webkit-scrollbar-track { background: var(--bg-primary); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+        /* ---- Project Progress Bar ---- */
+        .progress-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; }
+        .progress-title { font-size: 15px; font-weight: 800; color: var(--text-primary); }
+        .progress-pct { font-size: 28px; font-weight: 900; line-height: 1; }
+        .progress-track { width: 100%; height: 28px; background: var(--bg-primary); border-radius: 14px; overflow: hidden; position: relative; margin-bottom: 12px; }
+        .progress-fill { height: 100%; border-radius: 14px; transition: width 0.6s ease; position: relative; display: flex; align-items: center; justify-content: flex-end; padding-right: 12px; min-width: 40px; }
+        .progress-fill-label { font-size: 11px; font-weight: 700; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+        .progress-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+        .progress-stat { text-align: center; padding: 10px; background: var(--bg-primary); border-radius: 10px; }
+        .progress-stat-value { font-size: 18px; font-weight: 800; }
+        .progress-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+        .progress-milestone { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.3); }
+        .progress-milestone-label { position: absolute; top: -16px; font-size: 9px; color: var(--text-muted); transform: translateX(-50%); }
+
         /* ---- Tax & P&L Tab ---- */
         .cd-upload-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; }
         .cd-upload-zone:hover { border-color: var(--accent); background: rgba(79,195,247,0.05); }
@@ -852,6 +866,11 @@
         <!-- ===== EXPENSES TAB ===== -->
         <div class="tab-content" id="tab-expenses">
             <div id="expense-selector" style="margin-bottom:16px;"></div>
+
+            <!-- Project Progress Bar -->
+            <div class="card" id="project-progress-card" style="margin-bottom:16px;">
+                <div id="project-progress"></div>
+            </div>
 
             <div class="two-col">
                 <!-- Expense Breakdown Donut -->
@@ -2048,10 +2067,115 @@ function renderTimeline(prop, m) {
 }
 
 // ---- EXPENSES TAB ----
+function renderProjectProgress() {
+    const prop = getSelected();
+    const container = $('project-progress');
+    if (!container || !prop) return;
+    const m = prop.metrics;
+    const budget = m.budget || 0;
+    const spent = m.total_rehab || 0;
+    const lenderBudget = m.lender_budget || budget;
+
+    if (budget <= 0) {
+        container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Set an actual rehab budget on this property to see project progress.</div>';
+        return;
+    }
+
+    const pctDone = Math.min((spent / budget) * 100, 100);
+    const overBudget = spent > budget;
+    const overAmt = spent - budget;
+    const remaining = budget - spent;
+
+    // Color based on progress
+    let barColor, pctColor;
+    if (overBudget) {
+        barColor = 'linear-gradient(90deg, #ef5350, #c62828)';
+        pctColor = 'var(--red)';
+    } else if (pctDone >= 75) {
+        barColor = 'linear-gradient(90deg, #66bb6a, #ffa726)';
+        pctColor = 'var(--yellow)';
+    } else {
+        barColor = 'linear-gradient(90deg, #4fc3f7, #66bb6a)';
+        pctColor = 'var(--green)';
+    }
+
+    // Status message
+    let statusMsg;
+    if (overBudget) {
+        statusMsg = `<span style="color:var(--red);font-weight:700;">⚠️ Over budget by ${fmt(overAmt)}</span>`;
+    } else if (pctDone >= 90) {
+        statusMsg = `<span style="color:var(--yellow);">Almost done — ${fmt(remaining)} remaining</span>`;
+    } else if (pctDone >= 50) {
+        statusMsg = `<span style="color:var(--text-secondary);">Past halfway — ${fmt(remaining)} remaining</span>`;
+    } else if (pctDone > 0) {
+        statusMsg = `<span style="color:var(--text-secondary);">Getting started — ${fmt(remaining)} remaining</span>`;
+    } else {
+        statusMsg = `<span style="color:var(--text-muted);">No expenses yet — ${fmt(budget)} budget</span>`;
+    }
+
+    // Capital recapture info
+    const drawsInfo = lenderBudget > budget
+        ? `<div class="progress-stat"><div class="progress-stat-value" style="color:var(--accent)">${fmt(lenderBudget - budget)}</div><div class="progress-stat-label">Planned Capital Recapture</div></div>`
+        : '';
+
+    // Daily burn rate
+    const dailySpend = m.days_held > 0 ? spent / m.days_held : 0;
+    const daysToComplete = dailySpend > 0 && remaining > 0 ? Math.ceil(remaining / dailySpend) : 0;
+
+    container.innerHTML = `
+        <div class="progress-header">
+            <div>
+                <div class="progress-title">Project Progress</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${statusMsg}</div>
+            </div>
+            <div class="progress-pct" style="color:${pctColor}">${pctDone.toFixed(0)}%</div>
+        </div>
+        <div class="progress-track">
+            <div class="progress-fill" style="width:${Math.min(pctDone, 100)}%;background:${barColor};">
+                ${pctDone >= 8 ? `<span class="progress-fill-label">${fmt(spent)}</span>` : ''}
+            </div>
+            <!-- Milestone markers -->
+            <div class="progress-milestone" style="left:25%"><span class="progress-milestone-label">25%</span></div>
+            <div class="progress-milestone" style="left:50%"><span class="progress-milestone-label">50%</span></div>
+            <div class="progress-milestone" style="left:75%"><span class="progress-milestone-label">75%</span></div>
+        </div>
+        <div class="progress-stats">
+            <div class="progress-stat">
+                <div class="progress-stat-value">${fmt(spent)}</div>
+                <div class="progress-stat-label">Spent</div>
+            </div>
+            <div class="progress-stat">
+                <div class="progress-stat-value">${fmt(budget)}</div>
+                <div class="progress-stat-label">Actual Budget</div>
+            </div>
+            <div class="progress-stat">
+                <div class="progress-stat-value" style="color:${overBudget ? 'var(--red)' : 'var(--green)'}">${overBudget ? '-' : ''}${fmt(Math.abs(remaining))}</div>
+                <div class="progress-stat-label">${overBudget ? 'Over Budget' : 'Remaining'}</div>
+            </div>
+            <div class="progress-stat">
+                <div class="progress-stat-value">${fmt(lenderBudget)}</div>
+                <div class="progress-stat-label">Lender Budget</div>
+            </div>
+            ${drawsInfo}
+            ${dailySpend > 0 ? `<div class="progress-stat">
+                <div class="progress-stat-value">${fmt(dailySpend)}</div>
+                <div class="progress-stat-label">Avg Daily Spend</div>
+            </div>` : ''}
+            ${daysToComplete > 0 ? `<div class="progress-stat">
+                <div class="progress-stat-value">${daysToComplete}d</div>
+                <div class="progress-stat-label">Est. Days Left</div>
+            </div>` : ''}
+        </div>
+    `;
+}
+
 function renderExpenses() {
     const prop = getSelected();
     if (!prop) return;
     const m = prop.metrics;
+
+    // Project progress bar
+    renderProjectProgress();
 
     // Donut
     renderDonut(m.rehab_by_category);
