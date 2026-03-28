@@ -631,16 +631,40 @@ def parse_closing_disclosure(pdf_bytes):
                 'tax_category': tax_cat,
             })
 
-        # Deduplicate: remove items with same amount + similar description
-        seen = set()
-        deduped = []
+        # Deduplicate: same amount items, keep the one with the longer/better description
+        seen_amounts = {}
         for item in result['line_items']:
-            # Create a key from amount + first 20 chars of description
-            key = f"{item['amount']:.2f}_{item['description'][:20].lower()}"
-            if key not in seen:
-                seen.add(key)
-                deduped.append(item)
-        result['line_items'] = deduped
+            amt_key = f"{item['amount']:.2f}"
+            if amt_key in seen_amounts:
+                # Keep the one with the longer description (more context)
+                existing = seen_amounts[amt_key]
+                if len(item['description']) > len(existing['description']):
+                    seen_amounts[amt_key] = item
+            else:
+                seen_amounts[amt_key] = item
+        result['line_items'] = list(seen_amounts.values())
+
+        # Remove junk lines: descriptions starting with numbers like "01", "02" etc
+        # that are ALTA/CD section prefixes, and "Premium:" echo lines
+        cleaned = []
+        for item in result['line_items']:
+            desc = item['description']
+            desc_lower = desc.lower().strip()
+            # Skip "Premium:" lines (just echoes title insurance amounts)
+            if desc_lower.startswith('premium'):
+                continue
+            # Skip lines that start with "$ " (ALTA column artifacts)
+            if desc.startswith('$ '):
+                continue
+            # Skip "POC" lines (Paid Outside Closing markers, not actual charges)
+            if desc_lower in ('poc', 'poc $') or (desc_lower.startswith('poc') and len(desc_lower) < 10):
+                continue
+            # Clean up leading ALTA section numbers like "01", "02", "05Grantors"
+            desc_cleaned = re.sub(r'^\d{2}', '', desc).strip()
+            if desc_cleaned:
+                item['description'] = desc_cleaned
+            cleaned.append(item)
+        result['line_items'] = cleaned
 
         result['closing_costs_total'] = sum(item['amount'] for item in result['line_items'])
 
@@ -1792,6 +1816,26 @@ def upload_closing_disclosure(prop_id):
 
     # Parse the PDF
     parsed = parse_closing_disclosure(pdf_bytes)
+
+    # For sale CDs: filter out buyer-side items (you're the seller)
+    if cd_type == 'sale' and parsed.get('line_items'):
+        buyer_keywords = [
+            'credit report', 'prepaid interest', 'processing fee',
+            'lender', 'mortgage insurance', 'flood', 'tax service',
+            'appraisal', 'impound', 'escrow',
+            'homeowner', 'hazard',  # buyer's insurance escrow
+            'mortgage city', 'mortgage state',  # buyer's mortgage stamps
+            'title - icl', 'title - title commitment',
+            'title - title update',
+        ]
+        seller_items = []
+        for item in parsed['line_items']:
+            desc_lower = item['description'].lower()
+            is_buyer = any(kw in desc_lower for kw in buyer_keywords)
+            if not is_buyer:
+                seller_items.append(item)
+        parsed['line_items'] = seller_items
+        parsed['closing_costs_total'] = sum(i['amount'] for i in seller_items)
 
     # Store base64-encoded PDF + parsed data
     cd_data = {
