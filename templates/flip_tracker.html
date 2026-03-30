@@ -630,6 +630,9 @@
         .reno-tl-badge.done-early { background: rgba(79,195,247,0.15); color: var(--accent); border: 1px solid rgba(79,195,247,0.3); }
         .reno-tl-badge.done-late { background: rgba(255,167,38,0.15); color: var(--yellow); border: 1px solid rgba(255,167,38,0.3); }
         .reno-tl-badge.no-data { background: var(--bg-primary); color: var(--text-muted); border: 1px solid var(--border); }
+        .phase-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        @media (max-width: 900px) { .phase-cards { grid-template-columns: 1fr; } }
+        .phase-card { background: var(--bg-primary); border-radius: 10px; padding: 14px; }
 
         /* ---- Draw Tracker ---- */
         .draw-tracker { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -2333,170 +2336,164 @@ function renderRenoTimeline() {
     const container = $('reno-timeline');
     if (!container || !prop) return;
 
-    const startStr = prop.rehab_start_date || null;
-    const estDays  = parseInt(prop.rehab_estimated_days) || 0;
-    const doneStr  = prop.rehab_complete_date || null;
-
-    // Inline editable config row
-    const fmtD2 = (s) => s ? new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : null;
-    const startLbl  = fmtD2(startStr) || 'Set start date';
-    const estLbl    = estDays > 0 ? estDays + ' days' : 'Set est. days';
-    const doneLbl   = fmtD2(doneStr) || 'Set completion';
-    const noStart   = !startStr;
-    const noEst     = estDays <= 0;
-    const noDone    = !doneStr;
-
-    // ---- Calculations ----
     const today = new Date(); today.setHours(0,0,0,0);
-    const startDt = startStr ? new Date(startStr + 'T00:00:00') : null;
-    const doneDt  = doneStr  ? new Date(doneStr  + 'T00:00:00') : null;
-    const daysBetween = (a, b) => Math.round((b - a) / 86400000);
+    const toD  = (s) => s ? new Date(s + 'T00:00:00') : null;
+    const fmtD2 = (s) => s ? new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : null;
+    const diff = (a, b) => (a && b) ? Math.round((b - a) / 86400000) : null;
 
-    const daysElapsed = startDt ? Math.max(0, daysBetween(startDt, doneDt && doneDt <= today ? doneDt : today)) : 0;
-    const isComplete  = !!(doneDt && doneDt <= today);
-    const actualTotal = isComplete ? daysBetween(startDt, doneDt) : daysElapsed;
+    // ---- Phase definitions ----
+    // Phase 1: Renovation
+    const p1Start  = toD(prop.rehab_start_date);
+    const p1Est    = parseInt(prop.rehab_estimated_days) || 0;
+    const p1End    = toD(prop.rehab_complete_date) || toD(prop.listing_date); // listing = reno done
+    const p1Done   = !!(p1End && p1End <= today);
+    const p1Actual = p1Start ? diff(p1Start, p1Done ? p1End : today) : null;
+    const p1EstEnd = (p1Start && p1Est) ? new Date(p1Start.getTime() + p1Est*86400000) : null;
 
-    // Estimated complete date
-    const estCompleteDt = (startDt && estDays > 0)
-        ? new Date(startDt.getTime() + estDays * 86400000)
-        : null;
-    const estCompleteStr = estCompleteDt ? fmtD2(estCompleteDt.toISOString().split('T')[0]) : null;
+    // Phase 2: On Market (listed → under contract)
+    const p2Start  = toD(prop.listing_date);
+    const p2Est    = parseInt(prop.market_estimated_days) || 0;
+    const p2End    = toD(prop.under_contract_date);
+    const p2Done   = !!(p2End && p2End <= today);
+    const p2Actual = p2Start ? diff(p2Start, p2Done ? p2End : (p2Start <= today ? today : null)) : null;
+    const p2EstEnd = (p2Start && p2Est) ? new Date(p2Start.getTime() + p2Est*86400000) : null;
 
-    // Status
-    let badge = '', statusColor = 'var(--text-secondary)';
-    if (!startStr) {
-        badge = '<span class="reno-tl-badge no-data">⏳ Set a start date to begin tracking</span>';
-    } else if (isComplete && estDays > 0) {
-        const over = actualTotal - estDays;
-        if (over <= 0) {
-            badge = `<span class="reno-tl-badge done-early">✅ Finished ${Math.abs(over)} day${Math.abs(over)!==1?'s':''} ahead of schedule</span>`;
-        } else {
-            const overPct = Math.round((over / estDays) * 100);
-            badge = `<span class="reno-tl-badge done-late">⚠️ Finished ${over} day${over!==1?'s':''} over estimate (${overPct}% longer)</span>`;
+    // Phase 3: Closing (under contract → sale)
+    const p3Start  = toD(prop.under_contract_date);
+    const p3Est    = parseInt(prop.closing_estimated_days) || 30;
+    const p3End    = toD(prop.sale_date);
+    const p3Done   = !!(p3End && p3End <= today);
+    const p3Actual = p3Start ? diff(p3Start, p3Done ? p3End : (p3Start <= today ? today : null)) : null;
+    const p3EstEnd = (p3Start && p3Est) ? new Date(p3Start.getTime() + p3Est*86400000) : null;
+
+    // ---- Phase status helper ----
+    function phaseStatus(estD, actualD, isDone, started) {
+        if (!started) return { label: 'Not started', cls: 'no-data', eff: null };
+        if (!isDone) {
+            if (!estD) return { label: actualD + 'd elapsed', cls: 'no-data', eff: null };
+            const over = actualD - estD;
+            if (over > 0) return { label: `${over}d over est.`, cls: 'behind', eff: null };
+            return { label: `${estD - actualD}d left`, cls: 'on-track', eff: null };
         }
-    } else if (isComplete) {
-        badge = `<span class="reno-tl-badge on-track">✅ Renovation complete — ${actualTotal} days total</span>`;
-    } else if (startDt && estDays > 0) {
-        const over = daysElapsed - estDays;
-        if (over > 0) {
-            const overPct = Math.round((over / estDays) * 100);
-            badge = `<span class="reno-tl-badge behind">🔴 ${over} day${over!==1?'s':''} behind schedule (${overPct}% over)</span>`;
-        } else {
-            const daysLeft = estDays - daysElapsed;
-            badge = `<span class="reno-tl-badge on-track">🟢 On track — ${daysLeft} day${daysLeft!==1?'s':''} remaining</span>`;
-        }
-    } else if (startDt) {
-        badge = `<span class="reno-tl-badge no-data">📅 ${daysElapsed} days elapsed — set estimated days to track progress</span>`;
+        if (!estD) return { label: `Done — ${actualD}d total`, cls: 'on-track', eff: null };
+        const over = actualD - estD;
+        const eff  = Math.round((estD / actualD) * 100);
+        if (over <= 0) return { label: `Done — ${Math.abs(over)}d early`, cls: 'done-early', eff };
+        return { label: `Done — ${over}d late`, cls: 'done-late', eff };
     }
 
-    // ---- Bar ----
-    let barHTML = '';
-    if (startDt) {
-        // total bar span = max(estDays, daysElapsed, 1)
-        const barSpan = Math.max(estDays || 0, daysElapsed, 1);
-        const elapsedPct   = Math.min((daysElapsed / barSpan) * 100, 100);
-        const estEndPct    = estDays > 0 ? Math.min((estDays / barSpan) * 100, 100) : null;
-        const isOverrun    = !isComplete && daysElapsed > estDays && estDays > 0;
-        const isComplOverrun = isComplete && actualTotal > estDays && estDays > 0;
+    const s1 = phaseStatus(p1Est||null, p1Actual, p1Done, !!p1Start);
+    const s2 = phaseStatus(p2Est||null, p2Actual, p2Done, !!p2Start);
+    const s3 = phaseStatus(p3Est||null, p3Actual, p3Done, !!p3Start);
 
-        let fillColor;
-        if (isOverrun || isComplOverrun) {
-            fillColor = 'linear-gradient(90deg, #66bb6a, #ffa726 60%, #ef5350)';
-        } else if (isComplete) {
-            fillColor = 'linear-gradient(90deg, #4fc3f7, #66bb6a)';
-        } else if (estDays > 0 && daysElapsed >= estDays * 0.75) {
-            fillColor = 'linear-gradient(90deg, #4fc3f7, #ffa726)';
-        } else {
-            fillColor = 'linear-gradient(90deg, #4fc3f7, #66bb6a)';
-        }
+    // ---- Total project summary ----
+    const projectStart = p1Start || p2Start;
+    const projectEnd   = p3Done ? p3End : (p2Done && !p3Start ? null : null);
+    const totalActual  = (projectStart && projectEnd) ? diff(projectStart, projectEnd) : (projectStart ? diff(projectStart, today) : null);
+    const totalEst     = (p1Est || 0) + (p2Est || 0) + p3Est;
+    const estSaleDate  = (() => {
+        // Cascade: use actual phase end dates when known, otherwise estimate
+        const renoEnd  = p1Done ? p1End : (p1EstEnd || null);
+        const mktStart = p2Start || renoEnd;
+        const mktEnd   = p2Done ? p2End : (mktStart && p2Est ? new Date(mktStart.getTime() + (p2Est||30)*86400000) : null);
+        const clsStart = p3Start || mktEnd;
+        return clsStart ? new Date(clsStart.getTime() + p3Est*86400000) : null;
+    })();
 
-        // overrun shading (only if no done date and past estimate)
-        const overrunHTML = (isOverrun && estDays > 0)
-            ? `<div class="reno-tl-overrun-fill" style="left:${estEndPct}%;width:${elapsedPct - estEndPct}%;"></div>`
-            : '';
-
-        // Today marker (only if in progress)
-        const todayPct = !isComplete ? elapsedPct : null;
-        const todayMarker = todayPct !== null
-            ? `<div class="reno-tl-marker today" style="left:${todayPct}%" data-label="Today"></div>`
-            : '';
-
-        // Est-end marker (if estimate set and not complete or complete-overrun)
-        const estMarker = estEndPct && !isComplete && !isComplOverrun
-            ? `<div class="reno-tl-marker est-end" style="left:${Math.min(estEndPct,98)}%" data-label="Est. Done"></div>`
-            : '';
-
-        // Complete marker
-        const doneMarker = isComplete
-            ? `<div class="reno-tl-marker complete" style="left:${elapsedPct}%" data-label="Done"></div>`
-            : '';
-
-        const labelLeft  = startStr ? fmtD2(startStr) : 'Start';
-        const labelRight = estCompleteDt ? estCompleteStr : (doneStr ? fmtD2(doneStr) : `Day ${barSpan}`);
-
-        barHTML = `
-            <div class="reno-tl-label-row">
-                <span>${labelLeft}</span>
-                <span>${labelRight}</span>
-            </div>
-            <div class="reno-tl-bar-wrap">
-                <div class="reno-tl-track">
-                    <div class="reno-tl-fill" style="width:${elapsedPct}%;background:${fillColor};"></div>
-                    ${overrunHTML}
-                </div>
-                ${todayMarker}${estMarker}${doneMarker}
+    // ---- Gantt bar ----
+    // Each phase gets a proportional width segment
+    const ganttSpan = Math.max(totalEst || 1, totalActual || 1, 1);
+    function phaseSeg(startDt, estD, actualD, isDone, color, label) {
+        if (!startDt) return '';
+        const offset = diff(projectStart, startDt);
+        const width  = Math.max(isDone ? actualD : Math.max(estD||0, actualD||0), 1);
+        const leftPct  = Math.min((offset / ganttSpan) * 100, 98);
+        const widthPct = Math.min((width  / ganttSpan) * 100, 100 - leftPct);
+        const fillPct  = estD ? Math.min(((actualD||0) / width) * 100, 100) : (isDone ? 100 : Math.min(((actualD||0) / (width||1)) * 100, 100));
+        const isOver   = !isDone && estD && actualD > estD;
+        return `
+            <div class="gantt-seg" style="left:${leftPct}%;width:${widthPct}%;background:${color}22;border:1px solid ${color}44;border-radius:6px;position:absolute;height:100%;overflow:hidden;" title="${label}">
+                <div style="height:100%;width:${fillPct}%;background:${color};border-radius:inherit;opacity:${isOver?'0.9':'0.75'};"></div>
+                <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.6);white-space:nowrap;overflow:hidden;padding:0 4px;">${label}</div>
             </div>`;
     }
 
-    // ---- Stats row ----
-    let statsHTML = '';
-    if (startDt) {
-        const statItems = [];
-        statItems.push({ val: daysElapsed + 'd', lbl: isComplete ? 'Total Days' : 'Days Elapsed', color: '' });
-        if (estDays > 0 && !isComplete) {
-            const rem = Math.max(0, estDays - daysElapsed);
-            const over = Math.max(0, daysElapsed - estDays);
-            if (over > 0) {
-                statItems.push({ val: over + 'd', lbl: 'Days Over', color: 'var(--red)' });
-            } else {
-                statItems.push({ val: rem + 'd', lbl: 'Days Left', color: 'var(--green)' });
-            }
-        }
-        if (estDays > 0) {
-            statItems.push({ val: estDays + 'd', lbl: 'Estimated', color: 'var(--accent)' });
-        }
-        if (estCompleteStr && !isComplete) {
-            statItems.push({ val: estCompleteStr, lbl: 'Est. Complete', color: '' });
-        }
-        if (isComplete && estDays > 0) {
-            const eff = Math.round((estDays / actualTotal) * 100);
-            const effColor = eff >= 100 ? 'var(--green)' : eff >= 80 ? 'var(--yellow)' : 'var(--red)';
-            statItems.push({ val: eff + '%', lbl: 'Schedule Efficiency', color: effColor });
-        }
-        statsHTML = `<div class="reno-tl-stats">${statItems.map(s =>
-            `<div class="reno-tl-stat"><div class="val"${s.color ? ` style="color:${s.color}"`:''}">${s.val}</div><div class="lbl">${s.lbl}</div></div>`
-        ).join('')}</div>`;
+    const ganttHTML = projectStart ? `
+        <div style="position:relative;height:36px;margin:12px 0 32px;background:rgba(255,255,255,0.04);border-radius:8px;">
+            ${phaseSeg(p1Start, p1Est, p1Actual, p1Done, '#66bb6a', 'Renovation')}
+            ${phaseSeg(p2Start, p2Est, p2Actual, p2Done, '#4fc3f7', 'On Market')}
+            ${phaseSeg(p3Start, p3Est, p3Actual, p3Done, '#ab47bc', 'Closing')}
+            ${!p3Done && today >= projectStart ? `<div style="position:absolute;top:-4px;bottom:-4px;left:${Math.min((diff(projectStart,today)/ganttSpan)*100,99)}%;width:2px;background:#fff;opacity:0.6;border-radius:2px;"><span style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:rgba(255,255,255,0.6);white-space:nowrap;">Today</span></div>` : ''}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:-24px;margin-bottom:16px;">
+            <span>${fmtD2(prop.rehab_start_date) || fmtD2(prop.listing_date) || ''}</span>
+            <span>${p3Done ? fmtD2(prop.sale_date) : (estSaleDate ? 'Est. close: ' + fmtD2(estSaleDate.toISOString().split('T')[0]) : '')}</span>
+        </div>` : '';
+
+    // ---- Phase cards ----
+    function phaseCard(num, title, color, fields, status, actualD, estD, isDone) {
+        const badgeColors = { 'on-track':'var(--green)', 'behind':'var(--red)', 'done-early':'var(--accent)', 'done-late':'var(--yellow)', 'no-data':'var(--text-muted)' };
+        return `
+        <div class="phase-card" style="border-top:3px solid ${color};">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+                <div style="font-size:12px;font-weight:700;color:var(--text-primary);">Phase ${num}: ${title}</div>
+                ${isDone ? '<div style="font-size:10px;color:var(--green);margin-left:auto;font-weight:700;">✓ DONE</div>' : ''}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                ${fields.map(f => `
+                    <div>
+                        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:3px;">${f.label}</div>
+                        <div class="reno-val${f.val?'':' not-set'}" onclick="editRenoField(this, getSelected(), '${f.field}', '${f.type||'date'}')" style="font-size:13px;min-width:0;">${f.val || f.placeholder}</div>
+                    </div>`).join('')}
+            </div>
+            ${(actualD !== null) ? `
+            <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:12px;">
+                <div style="flex:1;text-align:center;">
+                    <div style="font-size:18px;font-weight:800;">${actualD}d</div>
+                    <div style="font-size:10px;color:var(--text-muted);">${isDone?'Actual':'Elapsed'}</div>
+                </div>
+                ${estD ? `<div style="flex:1;text-align:center;">
+                    <div style="font-size:18px;font-weight:800;color:${color};">${estD}d</div>
+                    <div style="font-size:10px;color:var(--text-muted);">Estimated</div>
+                </div>` : ''}
+                ${estD && isDone ? `<div style="flex:1;text-align:center;">
+                    <div style="font-size:18px;font-weight:800;color:${s1.cls==='done-early'?'var(--green)':actualD<=estD?'var(--green)':'var(--red)'};">${Math.round((estD/actualD)*100)}%</div>
+                    <div style="font-size:10px;color:var(--text-muted);">Efficiency</div>
+                </div>` : ''}
+            </div>` : ''}
+            <div style="margin-top:8px;font-size:11px;font-weight:600;color:${badgeColors[status.cls]||'var(--text-muted)'};">${status.label}</div>
+        </div>`;
     }
 
-    container.innerHTML = `
-        <div class="reno-tl-config">
-            <div class="reno-tl-field">
-                <label>Reno Start Date</label>
-                <div class="reno-val${noStart?' not-set':''}" onclick="editRenoField(this, getSelected(), 'rehab_start_date', 'date')">${startLbl}</div>
-            </div>
-            <div class="reno-tl-field">
-                <label>Estimated Duration</label>
-                <div class="reno-val${noEst?' not-set':''}" onclick="editRenoField(this, getSelected(), 'rehab_estimated_days', 'number')">${estLbl}</div>
-            </div>
-            <div class="reno-tl-field">
-                <label>Actual Completion</label>
-                <div class="reno-val${noDone?' not-set':''}" onclick="editRenoField(this, getSelected(), 'rehab_complete_date', 'date')">${doneLbl}</div>
-            </div>
-        </div>
-        ${badge}
-        ${barHTML}
-        ${statsHTML}
-    `;
+    const card1 = phaseCard(1, 'Renovation', '#66bb6a', [
+        { label:'Start Date',         field:'rehab_start_date',    type:'date',   val: fmtD2(prop.rehab_start_date),    placeholder:'Set start date' },
+        { label:'Est. Days',          field:'rehab_estimated_days',type:'number', val: p1Est ? p1Est+'d' : null,         placeholder:'Est. days' },
+        { label:'Completion Date',    field:'rehab_complete_date', type:'date',   val: fmtD2(prop.rehab_complete_date), placeholder:'Set completion' },
+    ], s1, p1Actual, p1Est||null, p1Done);
+
+    const card2 = phaseCard(2, 'On Market', '#4fc3f7', [
+        { label:'List Date',          field:'listing_date',        type:'date',   val: fmtD2(prop.listing_date),         placeholder:'Set list date' },
+        { label:'Est. Days on Market',field:'market_estimated_days',type:'number',val: p2Est ? p2Est+'d' : null,         placeholder:'Est. days' },
+        { label:'Under Contract',     field:'under_contract_date', type:'date',   val: fmtD2(prop.under_contract_date),  placeholder:'Set contract date' },
+    ], s2, p2Actual, p2Est||null, p2Done);
+
+    const card3 = phaseCard(3, 'Closing', '#ab47bc', [
+        { label:'Contract Date',      field:'under_contract_date', type:'date',   val: fmtD2(prop.under_contract_date),  placeholder:'Set contract date' },
+        { label:'Est. Closing Days',  field:'closing_estimated_days',type:'number',val: prop.closing_estimated_days ? p3Est+'d' : null, placeholder:'Est. days (default 30)' },
+        { label:'Sale / Close Date',  field:'sale_date',           type:'date',   val: fmtD2(prop.sale_date),            placeholder:'Set close date' },
+    ], s3, p3Actual, p3Est||null, p3Done);
+
+    // ---- Summary bar ----
+    const summaryHTML = totalActual !== null ? `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+            <div class="reno-tl-stat"><div class="val">${totalActual}d</div><div class="lbl">${p3Done?'Total Project':'Days So Far'}</div></div>
+            ${totalEst > 0 ? `<div class="reno-tl-stat"><div class="val" style="color:var(--accent);">${totalEst}d</div><div class="lbl">Total Estimated</div></div>` : ''}
+            ${p3Done && totalEst > 0 ? `<div class="reno-tl-stat"><div class="val" style="color:${totalActual<=totalEst?'var(--green)':'var(--red)'};">${Math.round((totalEst/totalActual)*100)}%</div><div class="lbl">Overall Efficiency</div></div>` : ''}
+            ${estSaleDate && !p3Done ? `<div class="reno-tl-stat"><div class="val" style="font-size:13px;">${fmtD2(estSaleDate.toISOString().split('T')[0])}</div><div class="lbl">Est. Close Date</div></div>` : ''}
+        </div>` : `<div style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Set a renovation start date to begin tracking your project timeline.</div>`;
+
+    container.innerHTML = summaryHTML + ganttHTML + `<div class="phase-cards">${card1}${card2}${card3}</div>`;
 }
 
 // ---- EXPENSES TAB ----
