@@ -158,12 +158,10 @@ def _fmt_date(v):
     if not v:
         return ''
     try:
-        return datetime.strptime(v, '%Y-%m-%d').strftime('%b %-d, %Y')
+        dt = datetime.strptime(str(v)[:10], '%Y-%m-%d')
+        return dt.strftime('%b') + ' ' + str(dt.day) + ', ' + str(dt.year)
     except (ValueError, AttributeError):
-        try:
-            return datetime.strptime(v, '%Y-%m-%d %H:%M').strftime('%b %-d, %Y')
-        except (ValueError, AttributeError):
-            return str(v)
+        return str(v)
 
 
 # ---------------------------------------------------------------------------
@@ -510,12 +508,12 @@ def _write_pnl(spreadsheet, ws, enriched):
             _fmt_usd(pnl.get('net_sale_proceeds', 0)),
             '',  # section label col
             _fmt_usd(pnl.get('purchase_price', 0)),
-            _fmt_usd(pnl.get('acq_closing', 0)),
+            _fmt_usd(pnl.get('acq_closing_total', 0)),
             _fmt_usd(reno_labor),
             _fmt_usd(reno_mats),
             _fmt_usd(reno_permits),
             _fmt_usd(reno_other),
-            _fmt_usd(pnl.get('holding_total', 0)),
+            _fmt_usd(pnl.get('holding_total', pnl.get('total_holding_cost', 0))),
             _fmt_usd(pnl.get('total_cogs', 0)),
             '',  # section label col
             _fmt_usd(pnl.get('commission', 0)),
@@ -696,7 +694,8 @@ def sync_to_sheets():
             except Exception:
                 prospects.append(p)
 
-        sync_time = datetime.now().strftime('%B %-d, %Y at %-I:%M %p')
+        now = datetime.now()
+        sync_time = now.strftime('%B') + ' ' + str(now.day) + ', ' + str(now.year) + ' at ' + now.strftime('%I:%M %p').lstrip('0')
 
         ws_dashboard = _get_or_create_tab(spreadsheet, 'Dashboard')
         ws_properties = _get_or_create_tab(spreadsheet, 'Properties')
@@ -704,11 +703,23 @@ def sync_to_sheets():
         ws_pnl        = _get_or_create_tab(spreadsheet, 'P&L Summary')
         ws_pipeline   = _get_or_create_tab(spreadsheet, 'Deal Pipeline')
 
-        _write_dashboard(spreadsheet, ws_dashboard, enriched, prospects, biz_settings, prospect_settings, sync_time)
-        _write_properties(spreadsheet, ws_properties, enriched)
-        _write_expenses(spreadsheet, ws_expenses, enriched, EXPENSE_TAX_MAP)
-        _write_pnl(spreadsheet, ws_pnl, enriched)
-        _write_pipeline(spreadsheet, ws_pipeline, prospects, prospect_settings)
+        # Each tab is independent — one failure won't block the rest
+        tab_results = {}
+
+        for tab_name, writer in [
+            ('Dashboard',    lambda: _write_dashboard(spreadsheet, ws_dashboard, enriched, prospects, biz_settings, prospect_settings, sync_time)),
+            ('Properties',   lambda: _write_properties(spreadsheet, ws_properties, enriched)),
+            ('Expenses',     lambda: _write_expenses(spreadsheet, ws_expenses, enriched, EXPENSE_TAX_MAP)),
+            ('P&L Summary',  lambda: _write_pnl(spreadsheet, ws_pnl, enriched)),
+            ('Deal Pipeline',lambda: _write_pipeline(spreadsheet, ws_pipeline, prospects, prospect_settings)),
+        ]:
+            try:
+                writer()
+                tab_results[tab_name] = 'ok'
+                print(f'[sheets_sync] ✓ {tab_name}')
+            except Exception as tab_err:
+                tab_results[tab_name] = str(tab_err)
+                print(f'[sheets_sync] ✗ {tab_name}: {tab_err}')
 
         # Enforce tab order
         try:
@@ -716,8 +727,10 @@ def sync_to_sheets():
         except Exception:
             pass
 
-        print(f'[sheets_sync] ✓ Sync complete — {len(enriched)} properties, {len(prospects)} prospects — {sync_time}')
-        return {'ok': True, 'synced_at': sync_time, 'properties': len(enriched), 'prospects': len(prospects)}
+        all_ok = all(v == 'ok' for v in tab_results.values())
+        print(f'[sheets_sync] Sync {"complete" if all_ok else "partial"} — {len(enriched)} properties, {len(prospects)} prospects — {sync_time}')
+        return {'ok': all_ok, 'synced_at': sync_time, 'tabs': tab_results,
+                'properties': len(enriched), 'prospects': len(prospects)}
 
     except Exception as e:
         print(f'[sheets_sync] ERROR: {e}')

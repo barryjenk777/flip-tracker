@@ -2257,13 +2257,16 @@ def sheets_status():
 
 @app.route('/api/sync-sheets', methods=['POST'])
 def trigger_sheets_sync():
-    import threading
     from sheets_sync import sync_to_sheets
-    def _run():
-        result = sync_to_sheets()
-        print(f'[sheets_sync] manual trigger result: {result}')
-    threading.Thread(target=_run, daemon=True).start()
-    return jsonify({'status': 'Sync started — check your Google Sheet in ~15 seconds'})
+    # Run synchronously so we can return the real result (fast enough < 15s)
+    result = sync_to_sheets()
+    if result and result.get('ok'):
+        return jsonify({'status': f"✓ All 5 tabs synced — {result.get('synced_at', '')}", 'detail': result})
+    elif result:
+        failed = [k for k, v in result.get('tabs', {}).items() if v != 'ok']
+        ok_tabs = [k for k, v in result.get('tabs', {}).items() if v == 'ok']
+        return jsonify({'status': f"⚠ {len(ok_tabs)}/5 tabs synced. Failed: {', '.join(failed)}", 'detail': result})
+    return jsonify({'status': 'Sync failed — check Railway logs', 'detail': {}})
 
 
 # ---------------------------------------------------------------------------

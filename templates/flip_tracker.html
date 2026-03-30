@@ -4045,9 +4045,14 @@ async function triggerSheetsSync() {
     try {
         const res = await fetch('/api/sync-sheets', { method: 'POST' });
         const data = await res.json();
-        showToast(data.status || 'Sync started!');
-    } catch(e) { showToast('Sync failed — check console', 'error'); }
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 5000);
+        showToast(data.status || 'Sync complete!');
+        if (data.detail && data.detail.tabs) {
+            const failed = Object.entries(data.detail.tabs).filter(([,v])=>v!=='ok');
+            if (failed.length) console.error('[Sheets Sync] Failed tabs:', failed);
+        }
+    } catch(e) { showToast('Sync failed — check console'); }
+    btn.textContent = orig;
+    btn.disabled = false;
 }
 
 // Show Sheets button only if Google Sheets is configured
