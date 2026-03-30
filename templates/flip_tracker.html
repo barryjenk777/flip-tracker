@@ -2209,14 +2209,32 @@ function renderCashInvested(m, prop) {
     const el = $('cash-invested-card');
     if (!el) return;
 
-    const fromCD = m.cash_invested_source === 'closing_disclosure';
-    const hasSubFields = (prop.emd||0) > 0 || (prop.appraisal_fee||0) > 0 || (prop.commitment_fee||0) > 0 || (prop.down_payment||0) > 0;
+    // ── Resolve the true total ──────────────────────────────────────
+    // Priority: manual override → sub-field sum → CD cash_to_close
+    const cdPurchase = prop.closing_disclosure_purchase || {};
+    const cdTotal = cdPurchase.cash_to_close || 0;
+    const emd = prop.emd || 0;
+    const appraisal = prop.appraisal_fee || 0;
+    const commitment = prop.commitment_fee || 0;
+    const downPayment = prop.down_payment || 0;
+    const subFieldSum = emd + appraisal + commitment + downPayment;
 
-    const rows = [
-        { label: 'Earnest Money Deposit (EMD)', field: 'emd', value: prop.emd || 0 },
-        { label: 'Appraisal Fee', field: 'appraisal_fee', value: prop.appraisal_fee || 0 },
-        { label: 'Commitment Fee', field: 'commitment_fee', value: prop.commitment_fee || 0 },
-        { label: 'Down Payment', field: 'down_payment', value: prop.down_payment || 0 },
+    // Use backend metric first (already has the fallback logic), but if still 0 read CD directly
+    const total = m.cash_invested > 0 ? m.cash_invested : (subFieldSum > 0 ? subFieldSum : cdTotal);
+
+    // Source label
+    const fromCD = total > 0 && total === cdTotal && subFieldSum === 0 && !(prop.cash_invested > 0);
+    const partnerTotal = total > 0 ? (total + (m.distributable_profit || (m.gross_profit - total)) * ((prop.partner_split_pct||50)/100)) : m.partner_total;
+
+    // ── Known items and auto-calculated remainder ──────────────────
+    const knownSum = subFieldSum;
+    const other = total > 0 ? Math.max(total - knownSum, 0) : 0;  // "Other Closing Costs" remainder
+
+    const breakdownRows = [
+        { label: 'Earnest Money Deposit (EMD)', field: 'emd', value: emd },
+        { label: 'Appraisal Fee', field: 'appraisal_fee', value: appraisal },
+        { label: 'Commitment Fee', field: 'commitment_fee', value: commitment },
+        { label: 'Down Payment', field: 'down_payment', value: downPayment },
     ];
 
     el.innerHTML = `
@@ -2224,57 +2242,66 @@ function renderCashInvested(m, prop) {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <div>
                 <div class="card-title" style="color:var(--yellow);margin-bottom:4px;">💰 Your Cash Invested</div>
-                <div style="font-size:12px;color:var(--text-secondary);">This amount is returned to you <strong style="color:var(--yellow)">before</strong> the profit split at closing.</div>
+                <div style="font-size:12px;color:var(--text-secondary);">Returned to you <strong style="color:var(--yellow)">before</strong> the profit split at closing.</div>
             </div>
             <div style="text-align:right;">
-                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">Total Capital</div>
-                <div style="font-size:32px;font-weight:800;color:var(--yellow);">${fmt(m.cash_invested)}</div>
-                ${m.cash_invested > 0 ? `<div style="font-size:11px;color:var(--text-secondary);">Your Total at Close: <strong style="color:var(--accent)">${fmt(m.partner_total)}</strong></div>` : ''}
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">${fromCD ? '📄 From Closing Disclosure' : 'Total Capital'}</div>
+                <div style="font-size:36px;font-weight:800;color:var(--yellow);">${total > 0 ? fmt(total) : '<span style="color:var(--text-muted);font-size:22px;">Not set</span>'}</div>
+                ${total > 0 ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Your Total at Close: <strong style="color:var(--accent)">${fmt(total + (m.gross_profit - total) * ((prop.partner_split_pct||50)/100))}</strong></div>` : ''}
             </div>
         </div>
 
-        ${fromCD && !hasSubFields ? `
-        <div style="background:rgba(255,167,38,0.12);border:1px solid rgba(255,167,38,0.4);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;">
-            <div style="font-weight:700;color:var(--yellow);margin-bottom:4px;">📄 Total pulled from Closing Disclosure (cash to close: ${fmt(m.cash_invested)})</div>
-            <div style="color:var(--text-secondary);">The breakdown below is empty because the deal was acquired before these fields were added.
-            Click each tile to enter the breakdown (EMD, appraisal, etc.) — or leave it as-is. Either way, <strong style="color:var(--yellow)">${fmt(m.cash_invested)} is tracked and will be returned to you first.</strong></div>
+        ${total === 0 ? `
+        <div style="background:var(--yellow-dim);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
+            No cash invested recorded. Click tiles below to enter your out-of-pocket costs, or upload a purchase Closing Disclosure on the Tax P&amp;L tab to auto-populate.
         </div>` : ''}
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px;">
-            ${rows.map(r => `
-            <div style="background:var(--bg-primary);border:1px solid ${r.value>0?'var(--yellow)':'var(--border)'};border-radius:8px;padding:12px;cursor:pointer;transition:border-color 0.2s;"
-                 onclick="editCashInvestedField('${prop.id}','${r.field}',this)"
-                 title="Click to edit">
-                <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:4px;">${r.label}</div>
-                <div style="font-size:20px;font-weight:700;color:${r.value>0?'var(--text-primary)':'var(--text-muted)'};" id="ci-val-${r.field}">${r.value > 0 ? fmt(r.value) : '—  tap to set'}</div>
-                <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">✏️ click to edit</div>
+        <!-- Breakdown table — always adds up to total -->
+        <div style="background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);overflow:hidden;margin-bottom:14px;">
+            <div style="padding:10px 14px;background:rgba(255,167,38,0.08);border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">
+                Breakdown — click any line to edit
+            </div>
+            ${breakdownRows.map(r => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;"
+                 onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background=''"
+                 onclick="editCashInvestedField('${prop.id}','${r.field}',${total})">
+                <span style="font-size:13px;color:${r.value>0?'var(--text-primary)':'var(--text-muted)'};">${r.label}</span>
+                <span style="font-size:14px;font-weight:700;color:${r.value>0?'var(--yellow)':'var(--text-muted)'};">
+                    ${r.value > 0 ? fmt(r.value) : '✏️ tap to set'}
+                </span>
             </div>`).join('')}
+            ${other > 0 ? `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);">
+                <span style="font-size:13px;color:var(--text-secondary);">Other Closing Costs <span style="font-size:11px;color:var(--text-muted)">(auto-calculated)</span></span>
+                <span style="font-size:14px;font-weight:700;color:var(--text-secondary);">${fmt(other)}</span>
+            </div>` : ''}
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(255,167,38,0.1);">
+                <span style="font-size:14px;font-weight:700;color:var(--yellow);">Total Cash Invested</span>
+                <span style="font-size:18px;font-weight:800;color:var(--yellow);">${fmt(total)}</span>
+            </div>
         </div>
-        ${m.cash_invested > 0 ? `
+
+        ${total > 0 ? `
         <div style="background:var(--bg-primary);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">How Your Reimbursement Works</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Reimbursement Flow at Closing</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap;">
                 <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);">Net Profit ${fmt(m.gross_profit)}</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(255,167,38,0.2);padding:4px 10px;border-radius:20px;color:var(--yellow);font-weight:700;">Return Your Capital ${fmt(m.cash_invested)}</span>
+                <span style="background:rgba(255,167,38,0.2);padding:4px 10px;border-radius:20px;color:var(--yellow);font-weight:700;">Return ${fmt(total)}</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.distributable_profit)} 50/50</span>
+                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.gross_profit - total)} 50/50</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);font-weight:700;">Your Total: ${fmt(m.partner_total)}</span>
+                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);font-weight:700;">Your Check: ${fmt(total + (m.gross_profit - total) * ((prop.partner_split_pct||50)/100))}</span>
             </div>
-        </div>` : `
-        <div style="background:var(--yellow-dim);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);font-size:13px;color:var(--text-secondary);">
-            No cash invested recorded yet. Click each field above to enter your out-of-pocket costs, or update via <strong>Edit Property</strong>.
-            These amounts are returned to you first before the profit split.
-        </div>`}
+        </div>` : ''}
     </div>`;
 }
 
-async function editCashInvestedField(propId, field, cell) {
+async function editCashInvestedField(propId, field, currentTotal) {
     const labelMap = { emd: 'EMD', appraisal_fee: 'Appraisal Fee', commitment_fee: 'Commitment Fee', down_payment: 'Down Payment' };
     const cur = getSelected();
     const curVal = cur ? (cur[field] || 0) : 0;
-    const newValStr = prompt(`Enter ${labelMap[field] || field}:`, curVal || '');
+    const newValStr = prompt(`Enter ${labelMap[field] || field}:\n\nTotal cash invested: ${typeof currentTotal === 'number' ? '$' + currentTotal.toLocaleString('en-US', {minimumFractionDigits:2}) : ''}`, curVal || '');
     if (newValStr === null) return;
     const newVal = parseFloat(newValStr) || 0;
     await apiFetch(`/api/flips/${propId}`, {
@@ -2284,6 +2311,7 @@ async function editCashInvestedField(propId, field, cell) {
     });
     await loadFlips();
 }
+
 
 /* ── Distribution at Close ────────────────────────────────────────── */
 function renderClosingSettlement(m, prop) {
