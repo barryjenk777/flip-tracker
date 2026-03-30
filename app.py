@@ -2246,6 +2246,52 @@ seed_second_property()
 seed_third_property()
 seed_22nd_street()
 
+# ---------------------------------------------------------------------------
+# Google Sheets sync — manual trigger route
+# ---------------------------------------------------------------------------
+@app.route('/api/sheets-status')
+def sheets_status():
+    configured = bool(os.environ.get('GOOGLE_SHEET_ID') and os.environ.get('GOOGLE_CREDENTIALS_JSON'))
+    return jsonify({'configured': configured})
+
+
+@app.route('/api/sync-sheets', methods=['POST'])
+def trigger_sheets_sync():
+    import threading
+    from sheets_sync import sync_to_sheets
+    def _run():
+        result = sync_to_sheets()
+        print(f'[sheets_sync] manual trigger result: {result}')
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'status': 'Sync started — check your Google Sheet in ~15 seconds'})
+
+
+# ---------------------------------------------------------------------------
+# Background scheduler — daily Google Sheets sync at 6 AM UTC
+# ---------------------------------------------------------------------------
+def _start_sheets_scheduler():
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from sheets_sync import sync_to_sheets
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(
+            sync_to_sheets,
+            trigger='cron',
+            hour=6, minute=0,
+            id='daily_sheets_sync',
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        scheduler.start()
+        print('[scheduler] Google Sheets daily sync scheduled — 06:00 UTC')
+    except Exception as e:
+        print(f'[scheduler] Could not start sheets scheduler: {e}')
+
+# Only start if Google credentials are configured
+if os.environ.get('GOOGLE_SHEET_ID') and os.environ.get('GOOGLE_CREDENTIALS_JSON'):
+    _start_sheets_scheduler()
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))
     app.run(debug=True, port=port, host='0.0.0.0')

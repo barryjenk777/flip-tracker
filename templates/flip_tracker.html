@@ -779,6 +779,7 @@
                     <div onclick="triggerRestoreBackup()" style="padding:10px 16px;cursor:pointer;font-size:13px;color:var(--yellow);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''">⬆ Restore from Backup</div>
                 </div>
             </div>
+            <button class="btn btn-secondary" id="sheets-sync-btn" onclick="triggerSheetsSync()" title="Sync to Google Sheets now" style="display:none;">📊 Sync Sheets</button>
             <button class="btn btn-secondary" id="header-ctx-btn" onclick="showAddProperty()">+ Add Property</button>
         </div>
     </div>
@@ -4034,6 +4035,25 @@ function triggerRestoreBackup() {
     };
     input.click();
 }
+
+// ---- Google Sheets Sync ----
+async function triggerSheetsSync() {
+    const btn = $('sheets-sync-btn');
+    const orig = btn.textContent;
+    btn.textContent = '⏳ Syncing...';
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/sync-sheets', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.status || 'Sync started!');
+    } catch(e) { showToast('Sync failed — check console', 'error'); }
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 5000);
+}
+
+// Show Sheets button only if Google Sheets is configured
+fetch('/api/sheets-status').then(r => r.json()).then(d => {
+    if (d.configured) $('sheets-sync-btn').style.display = '';
+}).catch(() => {});
 
 // ---- Init ----
 loadFlips();
