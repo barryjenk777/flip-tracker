@@ -1380,12 +1380,13 @@
             <h2>Add Expense</h2>
             <div class="form-grid">
                 <div class="form-group"><label>Date</label><input type="date" id="ne-date"></div>
-                <div class="form-group"><label>Vendor</label><input type="text" id="ne-vendor"></div>
+                <div class="form-group"><label>Vendor</label><input type="text" id="ne-vendor" oninput="autoFillVendorCategory(this.value)" autocomplete="off" list="vendor-suggestions"><datalist id="vendor-suggestions"></datalist></div>
                 <div class="form-group"><label>Description</label><input type="text" id="ne-desc"></div>
                 <div class="form-group"><label>Amount</label><input type="number" id="ne-amount" step="0.01"></div>
                 <div class="form-group">
                     <label>Category</label>
                     <select id="ne-category">
+                        <option>General Contractor</option>
                         <option>Labor - Plumbing</option>
                         <option>Labor - Electrical</option>
                         <option>Labor - HVAC</option>
@@ -1765,7 +1766,7 @@ function makeEditable(td, origIdx, field, currentVal, type, updateFn) {
     const saveFn = updateFn === 'draw' ? updateDraw : updateFn === 'mortgage' ? updateMortgage : updateExpense;
     const isCategory = field === 'category';
     if (isCategory) {
-        const cats = ['Labor - Plumbing','Labor - Electrical','Labor - HVAC','Labor - Kitchen','Labor - General','Building Materials','Flooring','Paint','Roofing','Windows & Doors','Landscaping','Permits','Marketing','Staging','Repairs - Pest','Repairs - Foundation','Utilities','Dumpster','Appliances','Other'];
+        const cats = ['General Contractor','Labor - Plumbing','Labor - Electrical','Labor - HVAC','Labor - Kitchen','Labor - General','Building Materials','Flooring','Paint','Roofing','Windows & Doors','Landscaping','Permits','Marketing','Staging','Repairs - Pest','Repairs - Foundation','Utilities','Dumpster','Appliances','Other'];
         const sel = document.createElement('select');
         sel.style.cssText = 'background:var(--bg-primary);border:1px solid var(--accent);border-radius:4px;padding:4px 8px;color:var(--text-primary);font-size:13px;width:100%;';
         cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; if (c === currentVal) o.selected = true; sel.appendChild(o); });
@@ -4436,10 +4437,56 @@ fetch('/api/sheets-status').then(r => r.json()).then(d => {
     if (d.configured) $('sheets-sync-btn').style.display = '';
 }).catch(() => {});
 
+// ---- Vendor defaults (auto-fill category) ----
+let vendorDefaults = {}; // lowercase vendor → category
+
+async function loadVendorDefaults() {
+    try {
+        const res = await fetch('/api/vendor-defaults');
+        vendorDefaults = await res.json();
+        // Populate datalist with known vendors (title-case)
+        const dl = document.getElementById('vendor-suggestions');
+        if (dl) {
+            Object.keys(vendorDefaults).forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.replace(/\b\w/g, c => c.toUpperCase()); // Title Case
+                dl.appendChild(opt);
+            });
+        }
+    } catch(e) {}
+}
+
+function autoFillVendorCategory(vendorVal) {
+    const key = vendorVal.toLowerCase().trim();
+    const cat = vendorDefaults[key];
+    if (cat) {
+        const sel = $('ne-category');
+        if (sel) {
+            // Find the matching option and select it
+            for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value === cat) { sel.selectedIndex = i; return; }
+            }
+        }
+    }
+}
+
+async function runVendorBackfill() {
+    // Run once per session — updates all historical expenses to match vendor defaults
+    if (sessionStorage.getItem('vendorBackfillDone')) return;
+    try {
+        await fetch('/api/admin/backfill-vendor-category', { method: 'POST', headers: {'Content-Type':'application/json'} });
+        sessionStorage.setItem('vendorBackfillDone', '1');
+        // Reload data so UI reflects backfilled categories
+        await loadFlips();
+    } catch(e) {}
+}
+
 // ---- Init ----
 loadFlips();
 loadProspects();
 initCmdYear();
+loadVendorDefaults();
+runVendorBackfill();
 </script>
 </body>
 </html>

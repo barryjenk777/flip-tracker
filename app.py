@@ -61,9 +61,15 @@ EXPENSE_TAX_MAP = {
     'Repairs - Pest': ('Renovation - Other', 'cogs'),
     'Repairs - Foundation': ('Renovation - Other', 'cogs'),
     'Utilities': ('Holding Costs', 'cogs'),
+    'General Contractor': ('Renovation - Labor', 'cogs'),
     'Marketing': ('Selling Costs', 'selling'),
     'Staging': ('Selling Costs', 'selling'),
     'Other': ('Renovation - Other', 'cogs'),
+}
+
+# Vendor → default category mappings (case-insensitive vendor match)
+VENDOR_CATEGORY_DEFAULTS = {
+    'echols plumbing': 'General Contractor',
 }
 
 # Closing Disclosure line item tax classification keywords
@@ -2295,6 +2301,38 @@ seed_willowbrook()
 seed_second_property()
 seed_third_property()
 seed_22nd_street()
+
+# ---------------------------------------------------------------------------
+# Vendor defaults — auto-category mapping
+# ---------------------------------------------------------------------------
+@app.route('/api/vendor-defaults')
+@login_required
+def get_vendor_defaults():
+    """Return vendor→category defaults so the frontend can auto-fill."""
+    return jsonify(VENDOR_CATEGORY_DEFAULTS)
+
+
+@app.route('/api/admin/backfill-vendor-category', methods=['POST'])
+@login_required
+def backfill_vendor_category():
+    """
+    Update all existing expenses whose vendor matches a key in VENDOR_CATEGORY_DEFAULTS
+    (case-insensitive) to the mapped category. Safe to call repeatedly — only changes
+    expenses that don't already have the correct category.
+    """
+    data = load_data()
+    updated = 0
+    for prop in data.get('properties', []):
+        for exp in prop.get('expenses', []):
+            vendor_key = exp.get('vendor', '').lower().strip()
+            mapped_cat = VENDOR_CATEGORY_DEFAULTS.get(vendor_key)
+            if mapped_cat and exp.get('category') != mapped_cat:
+                exp['category'] = mapped_cat
+                updated += 1
+    if updated > 0:
+        save_data(data)
+    return jsonify({'ok': True, 'updated': updated})
+
 
 # ---------------------------------------------------------------------------
 # Google Sheets sync — manual trigger route
