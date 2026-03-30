@@ -981,6 +981,9 @@
             <!-- Insights -->
             <div id="property-insights"></div>
 
+            <!-- Cash Invested — prominent, top priority -->
+            <div id="cash-invested-card"></div>
+
             <div class="two-col">
                 <!-- Profit Waterfall -->
                 <div class="card">
@@ -1014,6 +1017,9 @@
                 <div class="card-title">Project Timeline</div>
                 <div id="timeline"></div>
             </div>
+
+            <!-- Distribution at Close -->
+            <div id="closing-settlement-card"></div>
 
             <!-- Flags -->
             <div class="card">
@@ -1477,6 +1483,7 @@
                 <div class="form-group"><label>EMD</label><input type="number" id="ep-emd" step="0.01"></div>
                 <div class="form-group"><label>Appraisal Fee</label><input type="number" id="ep-appraisal" step="0.01"></div>
                 <div class="form-group"><label>Down Payment</label><input type="number" id="ep-downpayment" step="0.01" placeholder="0 for hard money"></div>
+                <div class="form-group"><label>Commitment Fee</label><input type="number" id="ep-commitment" step="0.01" placeholder="Lender commitment fee"></div>
                 <div class="form-group"><label>Cash Invested (total out-of-pocket)</label><input type="number" id="ep-cashinvested" step="0.01" placeholder="Auto-sums if blank"></div>
                 <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="ep-budget" step="0.01" oninput="autoCalcEpMortgage()"></div>
                 <div class="form-group"><label>Lender Rehab Budget</label><input type="number" id="ep-lender-budget" step="0.01"></div>
@@ -1643,6 +1650,7 @@ function showEditProperty() {
     $('ep-emd').value = prop.emd || '';
     $('ep-appraisal').value = prop.appraisal_fee || '';
     $('ep-downpayment').value = prop.down_payment || '';
+    $('ep-commitment').value = prop.commitment_fee || '';
     $('ep-cashinvested').value = prop.cash_invested || '';
     $('ep-budget').value = prop.rehab_budget || '';
     $('ep-lender-budget').value = prop.lender_rehab_budget || '';
@@ -1682,7 +1690,8 @@ async function submitEditProperty() {
         emd: +$('ep-emd').value || 0,
         appraisal_fee: +$('ep-appraisal').value || 0,
         down_payment: +$('ep-downpayment').value || 0,
-        cash_invested: +$('ep-cashinvested').value || ((+$('ep-emd').value||0) + (+$('ep-appraisal').value||0) + (+$('ep-downpayment').value||0)),
+        commitment_fee: +$('ep-commitment').value || 0,
+        cash_invested: +$('ep-cashinvested').value || ((+$('ep-emd').value||0) + (+$('ep-appraisal').value||0) + (+$('ep-downpayment').value||0) + (+$('ep-commitment').value||0)),
         rehab_budget: +$('ep-budget').value || 0,
         lender_rehab_budget: +$('ep-lender-budget').value || 0,
         purchase_date: $('ep-purchasedate').value || null,
@@ -2169,6 +2178,9 @@ function renderPropertyDetail() {
     if (m.draw_credit > 0) insights.push(`<strong>Draw surplus:</strong> You have ${fmt(m.draw_credit)} more in draws than rehab spend. This reduces your cash in the deal.`);
     $('property-insights').innerHTML = insights.map(i => `<div class="insight-box">${i}</div>`).join('');
 
+    // Cash Invested card (prominent)
+    renderCashInvested(m, prop);
+
     // Waterfall
     renderWaterfall(m, prop);
 
@@ -2184,9 +2196,192 @@ function renderPropertyDetail() {
     // Timeline
     renderTimeline(prop, m);
 
+    // Distribution at Close
+    renderClosingSettlement(m, prop);
+
     // Flags
     $('property-flags').innerHTML = m.flags.length ? m.flags.map(f => `<div class="flag ${f.type}"><span class="flag-icon">${f.type==='danger'?'&#9888;':'&#9679;'}</span>${f.msg}</div>`).join('') :
         '<div class="flag good"><span class="flag-icon">&#10003;</span> No risk flags on this property.</div>';
+}
+
+/* ── Cash Invested Card ───────────────────────────────────────────── */
+function renderCashInvested(m, prop) {
+    const el = $('cash-invested-card');
+    if (!el) return;
+
+    // If zero cash invested and no sub-fields, show a soft prompt
+    const hasData = (m.cash_invested > 0 || (prop.emd||0) > 0 || (prop.appraisal_fee||0) > 0 || (prop.commitment_fee||0) > 0 || (prop.down_payment||0) > 0);
+
+    const rows = [
+        { label: 'Earnest Money Deposit (EMD)', field: 'emd', value: prop.emd || 0 },
+        { label: 'Appraisal Fee', field: 'appraisal_fee', value: prop.appraisal_fee || 0 },
+        { label: 'Commitment Fee', field: 'commitment_fee', value: prop.commitment_fee || 0 },
+        { label: 'Down Payment', field: 'down_payment', value: prop.down_payment || 0 },
+    ];
+
+    el.innerHTML = `
+    <div class="card" style="border:2px solid var(--yellow);background:linear-gradient(135deg,var(--bg-card) 0%,rgba(255,167,38,0.05) 100%);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div>
+                <div class="card-title" style="color:var(--yellow);margin-bottom:4px;">💰 Your Cash Invested</div>
+                <div style="font-size:12px;color:var(--text-secondary);">This amount is returned to you <strong style="color:var(--yellow)">before</strong> the profit split at closing.</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">Total Capital</div>
+                <div style="font-size:32px;font-weight:800;color:var(--yellow);">${fmt(m.cash_invested)}</div>
+                ${m.cash_invested > 0 ? `<div style="font-size:11px;color:var(--text-secondary);">Your Total at Close: <strong style="color:var(--accent)">${fmt(m.partner_total)}</strong></div>` : ''}
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px;">
+            ${rows.map(r => `
+            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;transition:border-color 0.2s;"
+                 onclick="editCashInvestedField('${prop.id}','${r.field}',this)"
+                 title="Click to edit">
+                <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:4px;">${r.label}</div>
+                <div style="font-size:20px;font-weight:700;color:${r.value>0?'var(--text-primary)':'var(--text-muted)'};" id="ci-val-${r.field}">${r.value > 0 ? fmt(r.value) : '—  tap to set'}</div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">✏️ click to edit</div>
+            </div>`).join('')}
+        </div>
+        ${m.cash_invested > 0 ? `
+        <div style="background:var(--bg-primary);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">How Your Reimbursement Works</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap;">
+                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);">Net Profit ${fmt(m.gross_profit)}</span>
+                <span style="color:var(--text-muted)">→</span>
+                <span style="background:rgba(255,167,38,0.2);padding:4px 10px;border-radius:20px;color:var(--yellow);font-weight:700;">Return Your Capital ${fmt(m.cash_invested)}</span>
+                <span style="color:var(--text-muted)">→</span>
+                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.distributable_profit)} 50/50</span>
+                <span style="color:var(--text-muted)">→</span>
+                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);font-weight:700;">Your Total: ${fmt(m.partner_total)}</span>
+            </div>
+        </div>` : `
+        <div style="background:var(--yellow-dim);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);font-size:13px;color:var(--text-secondary);">
+            No cash invested recorded yet. Click each field above to enter your out-of-pocket costs, or update via <strong>Edit Property</strong>.
+            These amounts are returned to you first before the profit split.
+        </div>`}
+    </div>`;
+}
+
+async function editCashInvestedField(propId, field, cell) {
+    const labelMap = { emd: 'EMD', appraisal_fee: 'Appraisal Fee', commitment_fee: 'Commitment Fee', down_payment: 'Down Payment' };
+    const cur = getSelected();
+    const curVal = cur ? (cur[field] || 0) : 0;
+    const newValStr = prompt(`Enter ${labelMap[field] || field}:`, curVal || '');
+    if (newValStr === null) return;
+    const newVal = parseFloat(newValStr) || 0;
+    await apiFetch(`/api/flips/${propId}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ [field]: newVal })
+    });
+    await loadFlips();
+}
+
+/* ── Distribution at Close ────────────────────────────────────────── */
+function renderClosingSettlement(m, prop) {
+    const el = $('closing-settlement-card');
+    if (!el) return;
+
+    const splitPct = prop.partner_split_pct || 50;
+    const partnerPct = 100 - splitPct;
+
+    el.innerHTML = `
+    <div class="card" style="border:1px solid var(--accent);">
+        <div class="card-title" style="color:var(--accent);margin-bottom:16px;">📋 Distribution at Close — Settlement Preview</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">
+            Use this as your reference at the closing table. Shows exactly how proceeds will be distributed.
+        </div>
+
+        <div style="max-width:560px;">
+            <!-- Step 1: Gross proceeds -->
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;">
+                <span style="color:var(--text-secondary);">Estimated Sale Price</span>
+                <span style="color:var(--accent);font-weight:700;">+${fmt(m.effective_sale)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--text-secondary);">
+                <span style="padding-left:16px;">Purchase Price</span>
+                <span>-${fmt(m.purchase_price)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--text-secondary);">
+                <span style="padding-left:16px;">Acquisition Closing Costs</span>
+                <span>-${fmt(m.acq_closing_cost)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--text-secondary);">
+                <span style="padding-left:16px;">Rehab / Renovation</span>
+                <span>-${fmt(m.total_rehab)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--text-secondary);">
+                <span style="padding-left:16px;">Commissions & Sale Closing</span>
+                <span>-${fmt((m.sale_commission||0) + (m.sale_closing||0))}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--text-secondary);">
+                <span style="padding-left:16px;">Holding Costs</span>
+                <span>-${fmt(m.total_holding_cost)}</span>
+            </div>
+
+            <!-- Net Profit subtotal -->
+            <div style="display:flex;justify-content:space-between;padding:12px 0;margin:4px 0;background:var(--bg-primary);border-radius:6px;padding:10px 12px;font-size:15px;font-weight:700;">
+                <span>Net Profit</span>
+                <span style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'};">${m.gross_profit>=0?'+':''}${fmt(m.gross_profit)}</span>
+            </div>
+
+            ${m.cash_invested > 0 ? `
+            <!-- Step 2: Return of Capital -->
+            <div style="margin:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--yellow);letter-spacing:0.5px;">
+                Step 1 — Return Your Capital (Before Split)
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;background:rgba(255,167,38,0.1);border:1px solid rgba(255,167,38,0.3);border-radius:6px;font-size:14px;font-weight:700;">
+                <span style="color:var(--yellow);">💰 Return of Capital to You</span>
+                <span style="color:var(--yellow);">-${fmt(m.cash_invested)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:10px 12px;margin-top:4px;background:var(--bg-primary);border-radius:6px;font-size:14px;font-weight:700;">
+                <span>Distributable Profit</span>
+                <span style="color:${m.distributable_profit>=0?'var(--green)':'var(--red)'};">${m.distributable_profit>=0?'+':''}${fmt(m.distributable_profit)}</span>
+            </div>
+
+            <!-- Step 3: Split -->
+            <div style="margin:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-secondary);letter-spacing:0.5px;">
+                Step 2 — Profit Split
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                <div style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Your Profit Share (${splitPct}%)</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--accent);">+${fmt(m.partner_share)}</div>
+                </div>
+                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner Share (${partnerPct}%)</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-secondary);">+${fmt(m.distributable_profit - m.partner_share)}</div>
+                </div>
+            </div>
+
+            <!-- Barry's total check -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:linear-gradient(135deg,rgba(79,195,247,0.15) 0%,rgba(79,195,247,0.05) 100%);border:2px solid var(--accent);border-radius:8px;">
+                <div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:2px;">Capital ${fmt(m.cash_invested)} + Profit ${fmt(m.partner_share)}</div>
+                    <div style="font-size:16px;font-weight:700;color:var(--accent);">Your Total Check at Closing</div>
+                </div>
+                <div style="font-size:32px;font-weight:800;color:var(--accent);">+${fmt(m.partner_total)}</div>
+            </div>
+            ` : `
+            <!-- No cash invested — plain split -->
+            <div style="margin:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-secondary);letter-spacing:0.5px;">
+                Profit Split (${splitPct}% / ${partnerPct}%)
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                <div style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Your Share (${splitPct}%)</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--accent);">+${fmt(m.partner_share)}</div>
+                </div>
+                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner Share (${partnerPct}%)</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-secondary);">+${fmt(m.gross_profit - m.partner_share)}</div>
+                </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);font-style:italic;">
+                No cash invested recorded. Add your out-of-pocket costs in the Cash Invested card above to see your full reimbursement.
+            </div>`}
+        </div>
+    </div>`;
 }
 
 function renderWaterfall(m, prop) {
@@ -2200,12 +2395,17 @@ function renderWaterfall(m, prop) {
         { label: 'Sale Closing', amount: -m.sale_closing, color: 'var(--red)', positive: false },
         { label: 'Holding Cost', amount: -m.total_holding_cost, color: 'var(--yellow)', positive: false },
         { label: 'NET PROFIT', amount: m.gross_profit, color: m.gross_profit >= 0 ? 'var(--green)' : 'var(--red)', positive: m.gross_profit >= 0 },
+        ...(m.cash_invested > 0 ? [
+            { label: '— Return of Capital', amount: -m.cash_invested, color: 'var(--yellow)', positive: false, note: 'Reimbursed first' },
+            { label: '— Distributable Profit', amount: m.distributable_profit, color: 'var(--green)', positive: m.distributable_profit >= 0, note: 'Remaining to split' },
+            { label: '— Your Share (after capital)', amount: m.partner_total, color: 'var(--accent)', positive: true, note: `Capital + ${prop.partner_split_pct||50}% profit` },
+        ] : []),
     ];
 
     $('waterfall').innerHTML = '<div class="waterfall">' + items.map(it => {
         const w = Math.min(Math.abs(it.amount) / maxVal * 100, 100);
         return `<div class="wf-row">
-            <div class="wf-label">${it.label}</div>
+            <div class="wf-label">${it.label}${it.note ? `<span style="font-size:10px;color:var(--text-muted);margin-left:6px">(${it.note})</span>` : ''}</div>
             <div class="wf-bar-area"><div class="wf-bar" style="width:${Math.max(w,5)}%;background:${it.color};left:0">${Math.abs(it.amount) > maxVal*0.05 ? fmt(Math.abs(it.amount)) : ''}</div></div>
             <div class="wf-amount" style="color:${it.color}">${it.amount >= 0 ? '+' : '-'}${fmt(Math.abs(it.amount))}</div>
         </div>`;
