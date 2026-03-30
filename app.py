@@ -4,17 +4,24 @@ Flip Tracker - Professional Real Estate Flip Investment Dashboard
 Standalone Flask application for tracking renovation flip investments.
 """
 
-from flask import Flask, render_template, request, jsonify, Response, send_file
+from flask import Flask, render_template, request, jsonify, Response, send_file, session
 import json
 import os
 import base64
 import io
 import re
 import csv
+import tempfile
+import shutil
 from datetime import datetime
+from functools import wraps
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
+app.secret_key = os.environ.get('SECRET_KEY', 'flip-tracker-secret-key-change-in-prod')
+
+# Simple password protection — set APP_PASSWORD env var in Railway
+APP_PASSWORD = os.environ.get('APP_PASSWORD', '')
 
 # ---------------------------------------------------------------------------
 # Tax categorization for IRS reporting (flips = dealer property = inventory)
@@ -152,8 +159,18 @@ def save_data(data):
     global _memory_store
     _memory_store = data
     try:
-        with open(DATA_FILE, 'w') as f:
-            json.dump(data, f, indent=2)
+        # Atomic write: write to temp file then rename so a crash mid-write
+        # never corrupts the live file.
+        dir_name = os.path.dirname(DATA_FILE) or '.'
+        os.makedirs(dir_name, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(data, f, indent=2)
+            shutil.move(tmp_path, DATA_FILE)  # atomic on same filesystem
+        except Exception:
+            os.unlink(tmp_path)
+            raise
     except OSError as e:
         print(f"Warning: could not write data file: {e}")
 
@@ -1097,9 +1114,82 @@ def seed_third_property():
 
 
 # ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+@app.before_request
+def check_auth():
+    """Block all routes except /login if password is set and user not authenticated."""
+    if not APP_PASSWORD:
+        return  # no password configured — open access
+    if request.endpoint in ('login', 'static'):
+        return  # always allow login page
+    if not session.get('authenticated'):
+        if request.is_json or request.path.startswith('/api/'):
+            return jsonify({'error': 'Unauthorized'}), 401
+        return render_template('login.html'), 401
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if APP_PASSWORD and not session.get('authenticated'):
+            if request.is_json:
+                return jsonify({'error': 'Unauthorized'}), 401
+            return render_template('login.html'), 401
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if not APP_PASSWORD:
+        return jsonify({'ok': True})  # no password set
+    if request.method == 'POST':
+        pwd = (request.json or {}).get('password', '') if request.is_json else request.form.get('password', '')
+        if pwd == APP_PASSWORD:
+            session['authenticated'] = True
+            return jsonify({'ok': True}) if request.is_json else (__import__('flask').redirect('/'))
+        return (jsonify({'error': 'Wrong password'}), 403) if request.is_json else (render_template('login.html', error='Wrong password'), 403)
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return __import__('flask').redirect('/login')
+
+
+# ---------------------------------------------------------------------------
+# Backup / restore
+# ---------------------------------------------------------------------------
+@app.route('/api/backup/download')
+@login_required
+def backup_download():
+    data = load_data()
+    backup = json.dumps(data, indent=2)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    resp = Response(backup, mimetype='application/json')
+    resp.headers['Content-Disposition'] = f'attachment; filename=flip_tracker_backup_{ts}.json'
+    return resp
+
+@app.route('/api/backup/restore', methods=['POST'])
+@login_required
+def backup_restore():
+    try:
+        uploaded = request.json
+        if not isinstance(uploaded, dict) or 'properties' not in uploaded:
+            return jsonify({'error': 'Invalid backup file'}), 400
+        global _memory_store
+        _memory_store = None  # force reload after save
+        save_data(uploaded)
+        return jsonify({'ok': True, 'properties': len(uploaded.get('properties', []))})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.route('/')
+@login_required
 def flip_dashboard():
     return render_template('flip_tracker.html')
 

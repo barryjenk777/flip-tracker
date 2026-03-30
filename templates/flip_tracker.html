@@ -771,7 +771,14 @@
             <span class="subtitle">Investment Dashboard</span>
         </div>
         <div class="header-actions" id="header-actions">
-            <button class="btn btn-secondary" onclick="window.location='/api/export/csv'" title="Download CSV backup">&#128190; Backup</button>
+            <div style="position:relative;display:inline-block;">
+                <button class="btn btn-secondary" onclick="toggleBackupMenu()" title="Backup options" id="backup-btn">&#128190; Backup ▾</button>
+                <div id="backup-menu" style="display:none;position:absolute;right:0;top:38px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;min-width:180px;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,0.4);overflow:hidden;">
+                    <div onclick="downloadJsonBackup()" style="padding:10px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''">⬇ Download JSON Backup</div>
+                    <div onclick="window.location='/api/export/csv'" style="padding:10px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''">⬇ Download CSV</div>
+                    <div onclick="triggerRestoreBackup()" style="padding:10px 16px;cursor:pointer;font-size:13px;color:var(--yellow);" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background=''">⬆ Restore from Backup</div>
+                </div>
+            </div>
             <button class="btn btn-secondary" id="header-ctx-btn" onclick="showAddProperty()">+ Add Property</button>
         </div>
     </div>
@@ -3977,6 +3984,55 @@ function renderCapitalFlow(flow, activeDeals) {
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Active deals without estimated close date:</div>
         ${noDate.map(d => `<div style="font-size:12px;color:var(--yellow);">${d.address} — <a onclick="switchTab('property')" style="cursor:pointer;color:var(--accent);">add close date</a></div>`).join('')}
     </div>` : ''}`;
+}
+
+// ---- Backup / Restore ----
+function toggleBackupMenu() {
+    const m = $('backup-menu');
+    m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('#backup-btn') && !e.target.closest('#backup-menu')) {
+        const m = $('backup-menu');
+        if (m) m.style.display = 'none';
+    }
+});
+
+async function downloadJsonBackup() {
+    $('backup-menu').style.display = 'none';
+    const res = await fetch('/api/backup/download');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = res.headers.get('Content-Disposition').split('filename=')[1] || 'flip_tracker_backup.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Backup downloaded!');
+}
+
+function triggerRestoreBackup() {
+    $('backup-menu').style.display = 'none';
+    if (!confirm('⚠️ Restoring a backup will REPLACE all current data. Are you sure?')) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        const text = await file.text();
+        let parsed;
+        try { parsed = JSON.parse(text); } catch(e) { alert('Invalid backup file — not valid JSON.'); return; }
+        const res = await fetch('/api/backup/restore', { method: 'POST', headers: {'Content-Type':'application/json'}, body: text });
+        const result = await res.json();
+        if (result.ok) {
+            showToast(`Restored ${result.properties} properties`);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('Restore failed: ' + (result.error || 'unknown error'));
+        }
+    };
+    input.click();
 }
 
 // ---- Init ----

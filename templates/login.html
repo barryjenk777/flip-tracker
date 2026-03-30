@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flip Tracker — Login</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a1628;
+    color: #e0e6ef;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .login-card {
+    background: #131f35;
+    border: 1px solid #1e3a5f;
+    border-radius: 16px;
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .logo {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .logo h1 { font-size: 22px; font-weight: 800; color: #4fc3f7; }
+  .logo p { font-size: 13px; color: #6b8199; margin-top: 4px; }
+  label { display: block; font-size: 12px; color: #6b8199; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input[type="password"] {
+    width: 100%;
+    padding: 12px 14px;
+    background: #0a1628;
+    border: 1px solid #1e3a5f;
+    border-radius: 8px;
+    color: #e0e6ef;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input[type="password"]:focus { border-color: #4fc3f7; }
+  .btn {
+    width: 100%;
+    padding: 13px;
+    background: #4fc3f7;
+    color: #0a1628;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: opacity 0.2s;
+  }
+  .btn:hover { opacity: 0.9; }
+  .error {
+    background: rgba(244,67,54,0.15);
+    border: 1px solid rgba(244,67,54,0.4);
+    color: #ef5350;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .form-group { margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="logo">
+    <h1>Flip Tracker</h1>
+    <p>Investment Dashboard</p>
+  </div>
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+  <form method="POST" action="/login">
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" name="password" placeholder="Enter access password" autofocus>
+    </div>
+    <button type="submit" class="btn">Sign In</button>
+  </form>
+</div>
+</body>
+</html>
