@@ -999,9 +999,9 @@
             </div>
 
             <div class="two-col">
-                <!-- Budget vs Actual + Capital Recapture -->
+                <!-- Budget vs Actual + Draw Surplus -->
                 <div class="card">
-                    <div class="card-title">Budget, Draws & Capital Recapture</div>
+                    <div class="card-title">Budget, Draws & Draw Surplus</div>
                     <div id="budget-bar"></div>
                 </div>
 
@@ -2458,7 +2458,7 @@ function renderBudgetBar(m) {
 
         ${hasLender ? `
         <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-            <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;margin-bottom:6px;">Lender Rehab Budget & Capital Recapture</div>
+            <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;margin-bottom:6px;">Lender Rehab Budget & Draw Surplus</div>
             <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px;">
                 <span>Draws Taken: <strong>${fmt(m.total_draws)}</strong></span>
                 <span>Lender Budget: <strong style="color:var(--accent)">${fmt(m.lender_budget)}</strong></span>
@@ -2469,12 +2469,12 @@ function renderBudgetBar(m) {
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
                 <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Planned Recapture</div>
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Planned Draw Surplus</div>
                     <div style="font-size:22px;font-weight:700;color:var(--green)">${fmt(m.lender_budget_spread)}</div>
                     <div style="font-size:11px;color:var(--text-secondary)">Lender budget - actual budget</div>
                 </div>
                 <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Actual Recapture</div>
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Actual Draw Surplus</div>
                     <div style="font-size:22px;font-weight:700;color:${m.actual_capital_recapture>=0?'var(--green)':'var(--red)'}">${fmt(m.actual_capital_recapture)}</div>
                     <div style="font-size:11px;color:var(--text-secondary)">Lender budget - actual spend</div>
                 </div>
@@ -2788,7 +2788,7 @@ function renderProjectProgress() {
 
     // Capital recapture
     const drawsInfo = lenderBudget > budget
-        ? `<div class="progress-stat"><div class="progress-stat-value" style="color:var(--accent)">${fmt(lenderBudget - budget)}</div><div class="progress-stat-label">Capital Recapture</div></div>`
+        ? `<div class="progress-stat"><div class="progress-stat-value" style="color:var(--accent)">${fmt(lenderBudget - budget)}</div><div class="progress-stat-label">Draw Surplus</div></div>`
         : '';
 
     const editHint = `<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">✏️ click to edit</div>`;
