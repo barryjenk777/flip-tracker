@@ -86,7 +86,7 @@ CD_TAX_KEYWORDS = {
 # ---------------------------------------------------------------------------
 # Data persistence (JSON file, with in-memory fallback for Railway)
 # ---------------------------------------------------------------------------
-DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flip_data.json')
+DATA_FILE = os.environ.get('DATA_FILE', '/data/flip_data.json')
 _memory_store = None
 
 
@@ -144,8 +144,8 @@ def save_data(data):
     try:
         with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=2)
-    except OSError:
-        pass  # Railway read-only FS — memory store is still updated
+    except OSError as e:
+        print(f"Warning: could not write data file: {e}")
 
 
 # ---------------------------------------------------------------------------
