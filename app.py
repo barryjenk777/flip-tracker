@@ -323,13 +323,19 @@ def calc_property_metrics(prop):
     sale_commission = effective_sale * (sale_commission_pct / 100)
     sale_closing = effective_sale * (sale_closing_cost_pct / 100)
 
-    # ---- Total investment ----
+    # ---- Pre-purchase / out-of-pocket capital ----
     purchase_settlement = prop.get('purchase_settlement', 0) or 0
     emd = prop.get('emd', 0) or 0
     appraisal_fee = prop.get('appraisal_fee', 0) or 0
     commitment_fee = prop.get('commitment_fee', 0) or 0
+    down_payment = prop.get('down_payment', 0) or 0
+    # cash_invested = money the partnership put in out-of-pocket (returned before profit split)
+    # Can be set directly or auto-computed from sub-fields
+    cash_invested_manual = prop.get('cash_invested', 0) or 0
+    cash_invested = cash_invested_manual if cash_invested_manual > 0 else (emd + appraisal_fee + commitment_fee + down_payment)
+
     if purchase_settlement > 0:
-        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost
+        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + down_payment + total_rehab + total_holding_cost
     else:
         total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost
     # Draws reimburse rehab — any surplus reduces cash in deal
@@ -342,7 +348,10 @@ def calc_property_metrics(prop):
     total_costs = purchase_price + acq_closing_cost + total_rehab + sale_commission + sale_closing + total_holding_cost
     gross_profit = effective_sale - total_costs
     profit_margin = (gross_profit / effective_sale * 100) if effective_sale > 0 else 0
-    partner_share = gross_profit * (partner_split_pct / 100)
+    # Distributable profit = net profit after returning cash capital invested
+    distributable_profit = gross_profit - cash_invested
+    partner_share = distributable_profit * (partner_split_pct / 100)  # each partner's share of distributable
+    partner_total = cash_invested + partner_share  # what Partner A (Barry) actually takes home
 
     # ---- ROI ----
     roi = (gross_profit / cash_in_deal * 100) if cash_in_deal > 0 else 0
@@ -419,11 +428,14 @@ def calc_property_metrics(prop):
         'daily_hold': daily_hold, 'total_holding_cost': total_holding_cost,
         'acq_closing_cost': acq_closing_cost, 'total_cash_oop': total_cash_oop,
         'cash_in_deal': cash_in_deal,
+        'emd': emd, 'appraisal_fee': appraisal_fee, 'down_payment': down_payment,
+        'commitment_fee': commitment_fee, 'cash_invested': cash_invested,
         'sale_commission': sale_commission, 'sale_commission_pct': sale_commission_pct,
         'sale_closing': sale_closing, 'sale_closing_cost_pct': sale_closing_cost_pct,
         'total_costs': total_costs, 'gross_profit': gross_profit,
         'profit_margin': profit_margin, 'partner_split_pct': partner_split_pct,
-        'partner_share': partner_share,
+        'distributable_profit': distributable_profit,
+        'partner_share': partner_share, 'partner_total': partner_total,
         'roi': roi, 'annualized_roi': annualized_roi, 'cash_on_cash': cash_on_cash,
         'mao': mao, 'mao_with_holding': mao_with_holding,
         'passes_70_rule': passes_70_rule, 'total_cost_to_arv': total_cost_to_arv,
@@ -530,8 +542,13 @@ def calc_pnl(prop, metrics):
     se_tax = 0
     net_after_se = net_profit
 
-    # Partnership split
+    # Partnership waterfall: return capital first, then split remainder
     split_pct = prop.get('partner_split_pct', 50) / 100
+    cash_invested = metrics.get('cash_invested', 0)
+    distributable_profit = net_profit - cash_invested
+    partner_a_share = distributable_profit * split_pct
+    partner_b_share = distributable_profit * (1 - split_pct)
+    partner_a_total = cash_invested + partner_a_share  # capital return + profit share
 
     return {
         # Income
@@ -567,8 +584,11 @@ def calc_pnl(prop, metrics):
         'se_tax_rate': 0,
         'se_tax': se_tax,
         'net_after_se': net_after_se,
-        'partner_a_share': net_profit * split_pct,
-        'partner_b_share': net_profit * (1 - split_pct),
+        'cash_invested': cash_invested,
+        'distributable_profit': distributable_profit,
+        'partner_a_share': partner_a_share,
+        'partner_b_share': partner_b_share,
+        'partner_a_total': partner_a_total,
         'partner_split_pct': prop.get('partner_split_pct', 50),
         # Context
         'address': prop.get('address', ''),
@@ -1492,11 +1512,13 @@ def convert_prospect(prospect_id):
         'purchase_price': prospect.get('asking_price', 0),
         'arv': prospect.get('arv', 0),
         'sale_price': 0,
-        'acq_closing_cost': 0,
+        'acq_closing_cost': prospect.get('acq_closing_costs', 0),
         'purchase_settlement': 0,
-        'emd': 0,
-        'appraisal_fee': 0,
+        'emd': prospect.get('emd', 0),
+        'appraisal_fee': prospect.get('appraisal_fee', 0),
+        'down_payment': prospect.get('down_payment', 0),
         'commitment_fee': 0,
+        'cash_invested': prospect.get('cash_invested', 0),
         'purchase_date': datetime.now().strftime('%Y-%m-%d'),
         'estimated_sale_date': None,
         'sale_date': None,

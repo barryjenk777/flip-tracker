@@ -1227,6 +1227,14 @@
                             <div class="form-group"><label>Acq. Closing Costs</label><input type="number" id="qa-acqclose"></div>
                         </div>
 
+                        <div class="card-title">Pre-Purchase / Out-of-Pocket Capital <span style="font-size:10px;font-weight:400;color:var(--text-muted);">returned before profit split</span></div>
+                        <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;background:var(--bg-primary);border-radius:8px;padding:12px;">
+                            <div class="form-group"><label>Earnest Money Deposit (EMD)</label><input type="number" id="qa-emd" step="0.01" placeholder="0"></div>
+                            <div class="form-group"><label>Appraisal Fee</label><input type="number" id="qa-appraisal" step="0.01" placeholder="0"></div>
+                            <div class="form-group"><label>Down Payment</label><input type="number" id="qa-downpayment" step="0.01" placeholder="0 (hard money = $0)"></div>
+                            <div class="form-group"><label>Other Out-of-Pocket</label><input type="number" id="qa-otheracq" step="0.01" placeholder="0"></div>
+                        </div>
+
                         <div class="card-title">Holding Cost Estimate</div>
                         <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
                             <div class="form-group"><label>Est. Holding Period (months)</label><input type="number" id="qa-holdmonths"></div>
@@ -1358,6 +1366,10 @@
                 <div class="form-group"><label>Purchase Price</label><input type="number" id="np-purchase" oninput="autoCalcNpMortgage()"></div>
                 <div class="form-group"><label>ARV (After Repair Value)</label><input type="number" id="np-arv"></div>
                 <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="np-acqclosing"></div>
+                <div class="form-group"><label>Earnest Money Deposit (EMD)</label><input type="number" id="np-emd" step="0.01" placeholder="0"></div>
+                <div class="form-group"><label>Appraisal Fee</label><input type="number" id="np-appraisal" step="0.01" placeholder="0"></div>
+                <div class="form-group"><label>Down Payment</label><input type="number" id="np-downpayment" step="0.01" placeholder="0 (hard money = $0)"></div>
+                <div class="form-group"><label>Cash Invested (total out-of-pocket)</label><input type="number" id="np-cashinvested" step="0.01" placeholder="Auto-sums above if blank"></div>
                 <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="np-budget" oninput="autoCalcNpMortgage()" placeholder="What you plan to spend"></div>
                 <div class="form-group"><label>Lender Budget (Draw Pool)</label><input type="number" id="np-lender-budget" placeholder="What lender approved"></div>
                 <div class="form-group"><label>Purchase Date</label><input type="date" id="np-purchasedate"></div>
@@ -1463,6 +1475,9 @@
                 <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="ep-acqclosing" step="0.01"></div>
                 <div class="form-group"><label>Purchase Settlement (w/ down payment)</label><input type="number" id="ep-settlement" step="0.01"></div>
                 <div class="form-group"><label>EMD</label><input type="number" id="ep-emd" step="0.01"></div>
+                <div class="form-group"><label>Appraisal Fee</label><input type="number" id="ep-appraisal" step="0.01"></div>
+                <div class="form-group"><label>Down Payment</label><input type="number" id="ep-downpayment" step="0.01" placeholder="0 for hard money"></div>
+                <div class="form-group"><label>Cash Invested (total out-of-pocket)</label><input type="number" id="ep-cashinvested" step="0.01" placeholder="Auto-sums if blank"></div>
                 <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="ep-budget" step="0.01" oninput="autoCalcEpMortgage()"></div>
                 <div class="form-group"><label>Lender Rehab Budget</label><input type="number" id="ep-lender-budget" step="0.01"></div>
                 <div class="form-group"><label>Purchase Date</label><input type="date" id="ep-purchasedate"></div>
@@ -1626,6 +1641,9 @@ function showEditProperty() {
     $('ep-acqclosing').value = prop.acq_closing_cost || '';
     $('ep-settlement').value = prop.purchase_settlement || '';
     $('ep-emd').value = prop.emd || '';
+    $('ep-appraisal').value = prop.appraisal_fee || '';
+    $('ep-downpayment').value = prop.down_payment || '';
+    $('ep-cashinvested').value = prop.cash_invested || '';
     $('ep-budget').value = prop.rehab_budget || '';
     $('ep-lender-budget').value = prop.lender_rehab_budget || '';
     $('ep-purchasedate').value = prop.purchase_date || '';
@@ -1662,6 +1680,9 @@ async function submitEditProperty() {
         acq_closing_cost: +$('ep-acqclosing').value || 0,
         purchase_settlement: +$('ep-settlement').value || 0,
         emd: +$('ep-emd').value || 0,
+        appraisal_fee: +$('ep-appraisal').value || 0,
+        down_payment: +$('ep-downpayment').value || 0,
+        cash_invested: +$('ep-cashinvested').value || ((+$('ep-emd').value||0) + (+$('ep-appraisal').value||0) + (+$('ep-downpayment').value||0)),
         rehab_budget: +$('ep-budget').value || 0,
         lender_rehab_budget: +$('ep-lender-budget').value || 0,
         purchase_date: $('ep-purchasedate').value || null,
@@ -1820,6 +1841,10 @@ async function submitNewProperty() {
         purchase_price: +$('np-purchase').value || 0,
         arv: +$('np-arv').value || 0,
         acq_closing_cost: +$('np-acqclosing').value || 0,
+        emd: +$('np-emd').value || 0,
+        appraisal_fee: +$('np-appraisal').value || 0,
+        down_payment: +$('np-downpayment').value || 0,
+        cash_invested: +$('np-cashinvested').value || ((+$('np-emd').value||0) + (+$('np-appraisal').value||0) + (+$('np-downpayment').value||0)),
         rehab_budget: +$('np-budget').value || 0,
         lender_rehab_budget: +$('np-lender-budget').value || 0,
         purchase_date: $('np-purchasedate').value || null,
@@ -2125,7 +2150,7 @@ function renderPropertyDetail() {
 
     // Stats
     $('property-stats').innerHTML = `
-        <div class="stat-card highlight"><div class="stat-label">Est. Profit</div><div class="stat-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div><div class="stat-sub">Your split: ${fmt(m.partner_share)}</div></div>
+        <div class="stat-card highlight"><div class="stat-label">Est. Profit</div><div class="stat-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div><div class="stat-sub">${m.cash_invested>0?'Your total: '+fmt(m.partner_total):'Your split: '+fmt(m.partner_share)}</div></div>
         <div class="stat-card ${m.roi>=20?'green':m.roi>=10?'yellow':'red'}"><div class="stat-label">ROI</div><div class="stat-value">${pct(m.roi)}</div><div class="stat-sub">Annualized: ${pct(m.annualized_roi)}</div></div>
         <div class="stat-card"><div class="stat-label">Cash in Deal</div><div class="stat-value">${fmt(m.cash_in_deal)}</div><div class="stat-sub">OOP: ${fmt(m.total_cash_oop)}</div></div>
         <div class="stat-card"><div class="stat-label">Profit Margin</div><div class="stat-value">${pct(m.profit_margin)}</div></div>
@@ -2945,9 +2970,20 @@ function renderPropertyPnl(pnl, prop) {
         <tr><td class="pnl-sub" style="color:var(--text-muted)" colspan="2">S-Corp distribution — SE tax does not apply (flows to K-1 as ordinary income)</td><td class="pnl-amount" style="font-size:11px;color:var(--text-muted)">See CPA</td></tr>
 
         <tr><td style="height:12px" colspan="3"></td></tr>
-        <tr><td class="pnl-section" colspan="2">PARTNERSHIP SPLIT</td><td class="pnl-section"></td></tr>
+        <tr><td class="pnl-section" colspan="2">PARTNERSHIP DISTRIBUTION</td><td class="pnl-section"></td></tr>
+        ${pnl.cash_invested > 0 ? `
+        <tr><td class="pnl-sub">Return of Capital (out-of-pocket cash invested)</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed first</td><td class="pnl-amount pnl-positive">${f(pnl.cash_invested)}</td></tr>
+        <tr><td class="pnl-sub pnl-total">Distributable Profit</td><td></td><td class="pnl-amount pnl-total ${pnl.distributable_profit >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.distributable_profit)}</td></tr>
+        <tr><td style="height:4px" colspan="3"></td></tr>
+        <tr><td class="pnl-sub">Partner A — Return of Capital</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed</td><td class="pnl-amount pnl-positive">${f(pnl.cash_invested)}</td></tr>
+        <tr><td class="pnl-sub">Partner A — Profit Share (${pnl.partner_split_pct}% of distributable)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_a_share)}</td></tr>
+        <tr><td class="pnl-sub" style="font-weight:700;">Partner A TOTAL</td><td></td><td class="pnl-amount pnl-positive" style="font-weight:700;">${f(pnl.partner_a_total)}</td></tr>
+        <tr><td style="height:4px" colspan="3"></td></tr>
+        <tr><td class="pnl-sub">Partner B — Profit Share (${100 - pnl.partner_split_pct}% of distributable)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_b_share)}</td></tr>
+        ` : `
         <tr><td class="pnl-sub">Partner A (${pnl.partner_split_pct}%)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_a_share)}</td></tr>
         <tr><td class="pnl-sub">Partner B (${100 - pnl.partner_split_pct}%)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_b_share)}</td></tr>
+        `}
     </table>
     <div class="pnl-disclaimer">
         <strong>Tax Note (S-Corp):</strong> House flips are treated as dealer property (inventory) under IRS rules. All costs are capitalized to basis and deducted as COGS when sold.
@@ -3254,6 +3290,10 @@ async function analyzeProspect() {
         as_is_value: +$('qa-asis').value || 0,
         market_discount_pct: (+$('qa-discount').value || 0) / 100,
         acq_closing_costs: +$('qa-acqclose').value || 0,
+        emd: +$('qa-emd').value || 0,
+        appraisal_fee: +$('qa-appraisal').value || 0,
+        down_payment: +$('qa-downpayment').value || 0,
+        cash_invested: (+$('qa-emd').value||0) + (+$('qa-appraisal').value||0) + (+$('qa-downpayment').value||0) + (+$('qa-otheracq').value||0),
         holding_months: +$('qa-holdmonths').value || 0,
         monthly_utilities: +$('qa-utilities').value || 0,
         monthly_landscape: +$('qa-landscape').value || 0,
@@ -3274,7 +3314,7 @@ async function analyzeProspect() {
 }
 
 function clearAnalyzerForm() {
-    ['qa-address','qa-city','qa-asking','qa-arv','qa-rehab','qa-prep','qa-rent','qa-beds','qa-baths','qa-sqft','qa-year','qa-mls','qa-asis','qa-discount','qa-acqclose','qa-holdmonths','qa-utilities','qa-landscape','qa-insurance','qa-taxes','qa-hardmoney','qa-settlement','qa-concessions','qa-commission','qa-pricereduction'].forEach(id => { if ($(id)) $(id).value = ''; });
+    ['qa-address','qa-city','qa-asking','qa-arv','qa-rehab','qa-prep','qa-rent','qa-beds','qa-baths','qa-sqft','qa-year','qa-mls','qa-asis','qa-discount','qa-acqclose','qa-emd','qa-appraisal','qa-downpayment','qa-otheracq','qa-holdmonths','qa-utilities','qa-landscape','qa-insurance','qa-taxes','qa-hardmoney','qa-settlement','qa-concessions','qa-commission','qa-pricereduction'].forEach(id => { if ($(id)) $(id).value = ''; });
     $('qa-state').value = 'VA';
     $('qa-hm-rate').value = '11';
     $('prospect-results').style.display = 'none';
@@ -3474,6 +3514,9 @@ function loadProspectIntoForm(p) {
     if ($('qa-discount')) $('qa-discount').value = p.market_discount_pct ? (p.market_discount_pct * 100) : '';
     if ($('qa-asking')) $('qa-asking').value = p.asking_price || '';
     if ($('qa-acqclose')) $('qa-acqclose').value = p.acq_closing_costs || '';
+    if ($('qa-emd')) $('qa-emd').value = p.emd || '';
+    if ($('qa-appraisal')) $('qa-appraisal').value = p.appraisal_fee || '';
+    if ($('qa-downpayment')) $('qa-downpayment').value = p.down_payment || '';
 
     // Holding costs
     if ($('qa-holdmonths')) $('qa-holdmonths').value = p.holding_months || '';
