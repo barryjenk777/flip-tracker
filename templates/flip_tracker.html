@@ -2209,8 +2209,8 @@ function renderCashInvested(m, prop) {
     const el = $('cash-invested-card');
     if (!el) return;
 
-    // If zero cash invested and no sub-fields, show a soft prompt
-    const hasData = (m.cash_invested > 0 || (prop.emd||0) > 0 || (prop.appraisal_fee||0) > 0 || (prop.commitment_fee||0) > 0 || (prop.down_payment||0) > 0);
+    const fromCD = m.cash_invested_source === 'closing_disclosure';
+    const hasSubFields = (prop.emd||0) > 0 || (prop.appraisal_fee||0) > 0 || (prop.commitment_fee||0) > 0 || (prop.down_payment||0) > 0;
 
     const rows = [
         { label: 'Earnest Money Deposit (EMD)', field: 'emd', value: prop.emd || 0 },
@@ -2232,9 +2232,17 @@ function renderCashInvested(m, prop) {
                 ${m.cash_invested > 0 ? `<div style="font-size:11px;color:var(--text-secondary);">Your Total at Close: <strong style="color:var(--accent)">${fmt(m.partner_total)}</strong></div>` : ''}
             </div>
         </div>
+
+        ${fromCD && !hasSubFields ? `
+        <div style="background:rgba(255,167,38,0.12);border:1px solid rgba(255,167,38,0.4);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;">
+            <div style="font-weight:700;color:var(--yellow);margin-bottom:4px;">📄 Total pulled from Closing Disclosure (cash to close: ${fmt(m.cash_invested)})</div>
+            <div style="color:var(--text-secondary);">The breakdown below is empty because the deal was acquired before these fields were added.
+            Click each tile to enter the breakdown (EMD, appraisal, etc.) — or leave it as-is. Either way, <strong style="color:var(--yellow)">${fmt(m.cash_invested)} is tracked and will be returned to you first.</strong></div>
+        </div>` : ''}
+
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px;">
             ${rows.map(r => `
-            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;transition:border-color 0.2s;"
+            <div style="background:var(--bg-primary);border:1px solid ${r.value>0?'var(--yellow)':'var(--border)'};border-radius:8px;padding:12px;cursor:pointer;transition:border-color 0.2s;"
                  onclick="editCashInvestedField('${prop.id}','${r.field}',this)"
                  title="Click to edit">
                 <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:4px;">${r.label}</div>

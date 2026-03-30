@@ -333,6 +333,14 @@ def calc_property_metrics(prop):
     # Can be set directly or auto-computed from sub-fields
     cash_invested_manual = prop.get('cash_invested', 0) or 0
     cash_invested = cash_invested_manual if cash_invested_manual > 0 else (emd + appraisal_fee + commitment_fee + down_payment)
+    # Fallback: if no manual data, use cash_to_close from the purchase Closing Disclosure
+    cash_invested_source = 'manual'
+    if cash_invested == 0:
+        cd_pur = prop.get('closing_disclosure_purchase', {})
+        cd_cash_to_close = cd_pur.get('cash_to_close', 0) or 0
+        if cd_cash_to_close > 0:
+            cash_invested = cd_cash_to_close
+            cash_invested_source = 'closing_disclosure'
 
     if purchase_settlement > 0:
         total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + down_payment + total_rehab + total_holding_cost
@@ -430,6 +438,7 @@ def calc_property_metrics(prop):
         'cash_in_deal': cash_in_deal,
         'emd': emd, 'appraisal_fee': appraisal_fee, 'down_payment': down_payment,
         'commitment_fee': commitment_fee, 'cash_invested': cash_invested,
+        'cash_invested_source': cash_invested_source,
         'sale_commission': sale_commission, 'sale_commission_pct': sale_commission_pct,
         'sale_closing': sale_closing, 'sale_closing_cost_pct': sale_closing_cost_pct,
         'total_costs': total_costs, 'gross_profit': gross_profit,
@@ -2214,6 +2223,12 @@ def upload_closing_disclosure(prop_id):
 
     key = f'closing_disclosure_{cd_type}'
     prop[key] = cd_data
+
+    # For purchase CDs: auto-populate purchase_settlement from cash_to_close if not set
+    if cd_type == 'purchase' and cd_data['cash_to_close'] > 0:
+        if not prop.get('purchase_settlement', 0):
+            prop['purchase_settlement'] = cd_data['cash_to_close']
+
     save_data(data)
 
     return jsonify({
