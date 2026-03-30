@@ -134,8 +134,18 @@ def load_data():
             _memory_store.setdefault('prospect_settings', _default_prospect_settings())
             return _memory_store
     except (FileNotFoundError, json.JSONDecodeError):
-        _memory_store = _default_data()
-        return _memory_store
+        # Try to seed from bundled flip_data.json in the app directory
+        bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flip_data.json')
+        try:
+            with open(bundled, 'r') as f:
+                _memory_store = json.load(f)
+                _memory_store.setdefault('prospects', [])
+                _memory_store.setdefault('prospect_settings', _default_prospect_settings())
+                save_data(_memory_store)  # Write to volume so it persists
+                return _memory_store
+        except (FileNotFoundError, json.JSONDecodeError):
+            _memory_store = _default_data()
+            return _memory_store
 
 
 def save_data(data):
