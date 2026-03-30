@@ -1358,7 +1358,8 @@
                 <div class="form-group"><label>Purchase Price</label><input type="number" id="np-purchase" oninput="autoCalcNpMortgage()"></div>
                 <div class="form-group"><label>ARV (After Repair Value)</label><input type="number" id="np-arv"></div>
                 <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="np-acqclosing"></div>
-                <div class="form-group"><label>Rehab Budget</label><input type="number" id="np-budget" oninput="autoCalcNpMortgage()"></div>
+                <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="np-budget" oninput="autoCalcNpMortgage()" placeholder="What you plan to spend"></div>
+                <div class="form-group"><label>Lender Budget (Draw Pool)</label><input type="number" id="np-lender-budget" placeholder="What lender approved"></div>
                 <div class="form-group"><label>Purchase Date</label><input type="date" id="np-purchasedate"></div>
                 <div class="form-group"><label>Est. Sale Date</label><input type="date" id="np-estsaledate"></div>
                 <div class="form-group"><label>Hard Money Rate %</label><input type="number" id="np-hm-rate" step="0.25" value="11" oninput="autoCalcNpMortgage()"></div>
@@ -1819,6 +1820,7 @@ async function submitNewProperty() {
         arv: +$('np-arv').value || 0,
         acq_closing_cost: +$('np-acqclosing').value || 0,
         rehab_budget: +$('np-budget').value || 0,
+        lender_rehab_budget: +$('np-lender-budget').value || 0,
         purchase_date: $('np-purchasedate').value || null,
         estimated_sale_date: $('np-estsaledate').value || null,
         sale_commission_pct: +$('np-commission').value || 4,
@@ -2497,6 +2499,29 @@ function renderRenoTimeline() {
 }
 
 // ---- EXPENSES TAB ----
+function editBudgetField(el, field, currentVal) {
+    if (el.querySelector('input')) return;
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.value = currentVal || '';
+    inp.placeholder = '0';
+    inp.step = '1000';
+    inp.style.cssText = 'background:var(--bg-primary);border:1px solid var(--accent);border-radius:6px;color:var(--text-primary);font-size:16px;font-weight:800;padding:4px 8px;width:120px;text-align:center;outline:none;';
+    el.textContent = '';
+    el.appendChild(inp);
+    inp.focus();
+    inp.select();
+    const save = async () => {
+        const prop = getSelected();
+        if (!prop) return;
+        const val = parseFloat(inp.value) || 0;
+        await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ [field]: val }) });
+        await loadFlips();
+    };
+    inp.onblur = save;
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') loadFlips(); };
+}
+
 function renderProjectProgress() {
     const prop = getSelected();
     const container = $('project-progress');
@@ -2504,49 +2529,35 @@ function renderProjectProgress() {
     const m = prop.metrics;
     const budget = m.budget || 0;
     const spent = m.total_rehab || 0;
-    const lenderBudget = m.lender_budget || budget;
+    // Use raw property value for lender budget so we can distinguish "not set" from "same as budget"
+    const lenderBudgetRaw = prop.lender_rehab_budget || 0;
+    const lenderBudget = lenderBudgetRaw > 0 ? lenderBudgetRaw : budget;
 
-    if (budget <= 0) {
-        container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Set an actual rehab budget on this property to see project progress.</div>';
-        return;
-    }
-
-    const pctDone = Math.min((spent / budget) * 100, 100);
-    const overBudget = spent > budget;
+    const pctDone = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+    const overBudget = budget > 0 && spent > budget;
     const overAmt = spent - budget;
     const remaining = budget - spent;
 
     // Color based on progress
-    let barColor, pctColor;
-    if (overBudget) {
-        barColor = 'linear-gradient(90deg, #ef5350, #c62828)';
-        pctColor = 'var(--red)';
-    } else if (pctDone >= 75) {
-        barColor = 'linear-gradient(90deg, #66bb6a, #ffa726)';
-        pctColor = 'var(--yellow)';
-    } else {
-        barColor = 'linear-gradient(90deg, #4fc3f7, #66bb6a)';
-        pctColor = 'var(--green)';
-    }
+    let barColor = 'linear-gradient(90deg, #4fc3f7, #66bb6a)', pctColor = 'var(--green)';
+    if (overBudget) { barColor = 'linear-gradient(90deg, #ef5350, #c62828)'; pctColor = 'var(--red)'; }
+    else if (pctDone >= 75) { barColor = 'linear-gradient(90deg, #66bb6a, #ffa726)'; pctColor = 'var(--yellow)'; }
 
     // Status message
     let statusMsg;
-    if (overBudget) {
-        statusMsg = `<span style="color:var(--red);font-weight:700;">⚠️ Over budget by ${fmt(overAmt)}</span>`;
-    } else if (pctDone >= 90) {
-        statusMsg = `<span style="color:var(--yellow);">Almost done — ${fmt(remaining)} remaining</span>`;
-    } else if (pctDone >= 50) {
-        statusMsg = `<span style="color:var(--text-secondary);">Past halfway — ${fmt(remaining)} remaining</span>`;
-    } else if (pctDone > 0) {
-        statusMsg = `<span style="color:var(--text-secondary);">Getting started — ${fmt(remaining)} remaining</span>`;
-    } else {
-        statusMsg = `<span style="color:var(--text-muted);">No expenses yet — ${fmt(budget)} budget</span>`;
-    }
+    if (budget <= 0) statusMsg = `<span style="color:var(--text-muted);">Click <strong>Actual Budget</strong> below to set your rehab budget</span>`;
+    else if (overBudget) statusMsg = `<span style="color:var(--red);font-weight:700;">⚠️ Over budget by ${fmt(overAmt)}</span>`;
+    else if (pctDone >= 90) statusMsg = `<span style="color:var(--yellow);">Almost done — ${fmt(remaining)} remaining</span>`;
+    else if (pctDone >= 50) statusMsg = `<span style="color:var(--text-secondary);">Past halfway — ${fmt(remaining)} remaining</span>`;
+    else if (pctDone > 0) statusMsg = `<span style="color:var(--text-secondary);">Getting started — ${fmt(remaining)} remaining</span>`;
+    else statusMsg = `<span style="color:var(--text-muted);">No expenses yet — ${fmt(budget)} budget</span>`;
 
-    // Capital recapture info
+    // Capital recapture
     const drawsInfo = lenderBudget > budget
-        ? `<div class="progress-stat"><div class="progress-stat-value" style="color:var(--accent)">${fmt(lenderBudget - budget)}</div><div class="progress-stat-label">Planned Capital Recapture</div></div>`
+        ? `<div class="progress-stat"><div class="progress-stat-value" style="color:var(--accent)">${fmt(lenderBudget - budget)}</div><div class="progress-stat-label">Capital Recapture</div></div>`
         : '';
+
+    const editHint = `<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">✏️ click to edit</div>`;
 
     container.innerHTML = `
         <div class="progress-header">
@@ -2556,31 +2567,32 @@ function renderProjectProgress() {
             </div>
             <div class="progress-pct" style="color:${pctColor}">${pctDone.toFixed(0)}%</div>
         </div>
+        ${budget > 0 ? `
         <div class="progress-track">
             <div class="progress-fill" style="width:${Math.min(pctDone, 100)}%;background:${barColor};">
                 ${pctDone >= 8 ? `<span class="progress-fill-label">${fmt(spent)}</span>` : ''}
             </div>
-            <!-- Milestone markers -->
             <div class="progress-milestone" style="left:25%"><span class="progress-milestone-label">25%</span></div>
             <div class="progress-milestone" style="left:50%"><span class="progress-milestone-label">50%</span></div>
             <div class="progress-milestone" style="left:75%"><span class="progress-milestone-label">75%</span></div>
-        </div>
+        </div>` : ''}
         <div class="progress-stats">
             <div class="progress-stat">
                 <div class="progress-stat-value">${fmt(spent)}</div>
                 <div class="progress-stat-label">Spent</div>
             </div>
-            <div class="progress-stat">
-                <div class="progress-stat-value">${fmt(budget)}</div>
-                <div class="progress-stat-label">Actual Budget</div>
+            <div class="progress-stat" style="cursor:pointer;border-radius:8px;transition:background 0.15s;" onmouseover="this.style.background='var(--accent-dim)'" onmouseout="this.style.background=''" onclick="editBudgetField(this.querySelector('.progress-stat-value'), 'rehab_budget', ${budget})" title="Click to edit">
+                <div class="progress-stat-value" style="color:var(--accent);">${budget > 0 ? fmt(budget) : '—'}</div>
+                <div class="progress-stat-label">Actual Budget${editHint}</div>
             </div>
+            ${budget > 0 ? `
             <div class="progress-stat">
                 <div class="progress-stat-value" style="color:${overBudget ? 'var(--red)' : 'var(--green)'}">${overBudget ? '-' : ''}${fmt(Math.abs(remaining))}</div>
                 <div class="progress-stat-label">${overBudget ? 'Over Budget' : 'Remaining'}</div>
-            </div>
-            <div class="progress-stat">
-                <div class="progress-stat-value">${fmt(lenderBudget)}</div>
-                <div class="progress-stat-label">Lender Budget</div>
+            </div>` : ''}
+            <div class="progress-stat" style="cursor:pointer;border-radius:8px;transition:background 0.15s;" onmouseover="this.style.background='var(--accent-dim)'" onmouseout="this.style.background=''" onclick="editBudgetField(this.querySelector('.progress-stat-value'), 'lender_rehab_budget', ${lenderBudgetRaw})" title="Click to edit">
+                <div class="progress-stat-value" style="color:var(--accent);">${lenderBudgetRaw > 0 ? fmt(lenderBudgetRaw) : '—'}</div>
+                <div class="progress-stat-label">Lender Budget${editHint}</div>
             </div>
             ${drawsInfo}
         </div>
