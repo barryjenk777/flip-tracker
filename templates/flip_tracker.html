@@ -491,6 +491,146 @@
         .timeline-date.editable-date:hover { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
         .timeline-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
 
+        /* ---- Renovation Timeline ---- */
+        .reno-tl-config {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .reno-tl-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .reno-tl-field label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .reno-tl-field .reno-val {
+            font-size: 14px;
+            color: var(--text-primary);
+            font-weight: 600;
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px dashed var(--border);
+            background: var(--bg-primary);
+            min-width: 110px;
+            text-align: center;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .reno-tl-field .reno-val:hover { border-color: var(--accent); color: var(--accent); }
+        .reno-tl-field .reno-val.not-set { color: var(--text-muted); font-style: italic; font-weight: 400; }
+        .reno-tl-field input {
+            background: var(--bg-primary);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            padding: 4px 10px;
+            min-width: 110px;
+            text-align: center;
+            outline: none;
+        }
+        .reno-tl-bar-wrap {
+            position: relative;
+            height: 36px;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            overflow: visible;
+            margin: 8px 0 28px;
+        }
+        .reno-tl-track {
+            position: absolute;
+            inset: 0;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+        .reno-tl-fill {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.4s ease;
+        }
+        .reno-tl-overrun-fill {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(239,83,80,0.25), rgba(183,28,28,0.5));
+            border-radius: 0 8px 8px 0;
+            border-left: 2px dashed var(--red);
+        }
+        .reno-tl-marker {
+            position: absolute;
+            top: -6px;
+            bottom: -6px;
+            width: 2px;
+            background: var(--yellow);
+            z-index: 2;
+        }
+        .reno-tl-marker::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: var(--yellow);
+            white-space: nowrap;
+            font-weight: 700;
+        }
+        .reno-tl-marker.today { background: #fff; }
+        .reno-tl-marker.today::after { color: #fff; }
+        .reno-tl-marker.est-end { background: var(--accent); }
+        .reno-tl-marker.est-end::after { color: var(--accent); }
+        .reno-tl-marker.complete { background: var(--green); }
+        .reno-tl-marker.complete::after { color: var(--green); }
+        .reno-tl-label-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+        .reno-tl-stats {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .reno-tl-stat {
+            flex: 1;
+            min-width: 80px;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+        .reno-tl-stat .val { font-size: 20px; font-weight: 800; }
+        .reno-tl-stat .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
+        .reno-tl-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .reno-tl-badge.on-track { background: rgba(102,187,106,0.15); color: var(--green); border: 1px solid rgba(102,187,106,0.3); }
+        .reno-tl-badge.behind { background: rgba(239,83,80,0.15); color: var(--red); border: 1px solid rgba(239,83,80,0.3); }
+        .reno-tl-badge.done-early { background: rgba(79,195,247,0.15); color: var(--accent); border: 1px solid rgba(79,195,247,0.3); }
+        .reno-tl-badge.done-late { background: rgba(255,167,38,0.15); color: var(--yellow); border: 1px solid rgba(255,167,38,0.3); }
+        .reno-tl-badge.no-data { background: var(--bg-primary); color: var(--text-muted); border: 1px solid var(--border); }
+
         /* ---- Draw Tracker ---- */
         .draw-tracker { display: flex; gap: 8px; flex-wrap: wrap; }
         .draw-block {
@@ -883,7 +1023,13 @@
         <div class="tab-content" id="tab-expenses">
             <div id="expense-selector" style="margin-bottom:16px;"></div>
 
-            <!-- Project Progress Bar -->
+            <!-- Renovation Timeline -->
+            <div class="card" style="margin-bottom:16px;">
+                <div class="card-title">Renovation Timeline</div>
+                <div id="reno-timeline"></div>
+            </div>
+
+            <!-- Project Budget Progress -->
             <div class="card" id="project-progress-card" style="margin-bottom:16px;">
                 <div id="project-progress"></div>
             </div>
@@ -2161,6 +2307,198 @@ function renderTimeline(prop, m) {
     }).join('') + '</div>';
 }
 
+// ---- RENOVATION TIMELINE ----
+function editRenoField(el, prop, field, type) {
+    if (el.querySelector('input')) return;
+    const inp = document.createElement('input');
+    inp.type = type || 'date';
+    inp.value = prop[field] || '';
+    if (type === 'number') { inp.placeholder = '90'; inp.min = 1; inp.step = 1; }
+    inp.style.cssText = 'background:var(--bg-primary);border:1px solid var(--accent);border-radius:6px;color:var(--text-primary);font-size:14px;padding:4px 10px;min-width:110px;text-align:center;outline:none;';
+    el.textContent = '';
+    el.appendChild(inp);
+    inp.focus();
+    if (type !== 'number') inp.select && inp.select();
+    const save = async () => {
+        const val = type === 'number' ? (parseInt(inp.value) || null) : (inp.value || null);
+        await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ [field]: val }) });
+        await loadFlips();
+    };
+    inp.onblur = save;
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') loadFlips(); };
+}
+
+function renderRenoTimeline() {
+    const prop = getSelected();
+    const container = $('reno-timeline');
+    if (!container || !prop) return;
+
+    const startStr = prop.rehab_start_date || null;
+    const estDays  = parseInt(prop.rehab_estimated_days) || 0;
+    const doneStr  = prop.rehab_complete_date || null;
+
+    // Inline editable config row
+    const fmtD2 = (s) => s ? new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : null;
+    const startLbl  = fmtD2(startStr) || 'Set start date';
+    const estLbl    = estDays > 0 ? estDays + ' days' : 'Set est. days';
+    const doneLbl   = fmtD2(doneStr) || 'Set completion';
+    const noStart   = !startStr;
+    const noEst     = estDays <= 0;
+    const noDone    = !doneStr;
+
+    // ---- Calculations ----
+    const today = new Date(); today.setHours(0,0,0,0);
+    const startDt = startStr ? new Date(startStr + 'T00:00:00') : null;
+    const doneDt  = doneStr  ? new Date(doneStr  + 'T00:00:00') : null;
+    const daysBetween = (a, b) => Math.round((b - a) / 86400000);
+
+    const daysElapsed = startDt ? Math.max(0, daysBetween(startDt, doneDt && doneDt <= today ? doneDt : today)) : 0;
+    const isComplete  = !!(doneDt && doneDt <= today);
+    const actualTotal = isComplete ? daysBetween(startDt, doneDt) : daysElapsed;
+
+    // Estimated complete date
+    const estCompleteDt = (startDt && estDays > 0)
+        ? new Date(startDt.getTime() + estDays * 86400000)
+        : null;
+    const estCompleteStr = estCompleteDt ? fmtD2(estCompleteDt.toISOString().split('T')[0]) : null;
+
+    // Status
+    let badge = '', statusColor = 'var(--text-secondary)';
+    if (!startStr) {
+        badge = '<span class="reno-tl-badge no-data">⏳ Set a start date to begin tracking</span>';
+    } else if (isComplete && estDays > 0) {
+        const over = actualTotal - estDays;
+        if (over <= 0) {
+            badge = `<span class="reno-tl-badge done-early">✅ Finished ${Math.abs(over)} day${Math.abs(over)!==1?'s':''} ahead of schedule</span>`;
+        } else {
+            const overPct = Math.round((over / estDays) * 100);
+            badge = `<span class="reno-tl-badge done-late">⚠️ Finished ${over} day${over!==1?'s':''} over estimate (${overPct}% longer)</span>`;
+        }
+    } else if (isComplete) {
+        badge = `<span class="reno-tl-badge on-track">✅ Renovation complete — ${actualTotal} days total</span>`;
+    } else if (startDt && estDays > 0) {
+        const over = daysElapsed - estDays;
+        if (over > 0) {
+            const overPct = Math.round((over / estDays) * 100);
+            badge = `<span class="reno-tl-badge behind">🔴 ${over} day${over!==1?'s':''} behind schedule (${overPct}% over)</span>`;
+        } else {
+            const daysLeft = estDays - daysElapsed;
+            badge = `<span class="reno-tl-badge on-track">🟢 On track — ${daysLeft} day${daysLeft!==1?'s':''} remaining</span>`;
+        }
+    } else if (startDt) {
+        badge = `<span class="reno-tl-badge no-data">📅 ${daysElapsed} days elapsed — set estimated days to track progress</span>`;
+    }
+
+    // ---- Bar ----
+    let barHTML = '';
+    if (startDt) {
+        // total bar span = max(estDays, daysElapsed, 1)
+        const barSpan = Math.max(estDays || 0, daysElapsed, 1);
+        const elapsedPct   = Math.min((daysElapsed / barSpan) * 100, 100);
+        const estEndPct    = estDays > 0 ? Math.min((estDays / barSpan) * 100, 100) : null;
+        const isOverrun    = !isComplete && daysElapsed > estDays && estDays > 0;
+        const isComplOverrun = isComplete && actualTotal > estDays && estDays > 0;
+
+        let fillColor;
+        if (isOverrun || isComplOverrun) {
+            fillColor = 'linear-gradient(90deg, #66bb6a, #ffa726 60%, #ef5350)';
+        } else if (isComplete) {
+            fillColor = 'linear-gradient(90deg, #4fc3f7, #66bb6a)';
+        } else if (estDays > 0 && daysElapsed >= estDays * 0.75) {
+            fillColor = 'linear-gradient(90deg, #4fc3f7, #ffa726)';
+        } else {
+            fillColor = 'linear-gradient(90deg, #4fc3f7, #66bb6a)';
+        }
+
+        // overrun shading (only if no done date and past estimate)
+        const overrunHTML = (isOverrun && estDays > 0)
+            ? `<div class="reno-tl-overrun-fill" style="left:${estEndPct}%;width:${elapsedPct - estEndPct}%;"></div>`
+            : '';
+
+        // Today marker (only if in progress)
+        const todayPct = !isComplete ? elapsedPct : null;
+        const todayMarker = todayPct !== null
+            ? `<div class="reno-tl-marker today" style="left:${todayPct}%" data-label="Today"></div>`
+            : '';
+
+        // Est-end marker (if estimate set and not complete or complete-overrun)
+        const estMarker = estEndPct && !isComplete && !isComplOverrun
+            ? `<div class="reno-tl-marker est-end" style="left:${Math.min(estEndPct,98)}%" data-label="Est. Done"></div>`
+            : '';
+
+        // Complete marker
+        const doneMarker = isComplete
+            ? `<div class="reno-tl-marker complete" style="left:${elapsedPct}%" data-label="Done"></div>`
+            : '';
+
+        const labelLeft  = startStr ? fmtD2(startStr) : 'Start';
+        const labelRight = estCompleteDt ? estCompleteStr : (doneStr ? fmtD2(doneStr) : `Day ${barSpan}`);
+
+        barHTML = `
+            <div class="reno-tl-label-row">
+                <span>${labelLeft}</span>
+                <span>${labelRight}</span>
+            </div>
+            <div class="reno-tl-bar-wrap">
+                <div class="reno-tl-track">
+                    <div class="reno-tl-fill" style="width:${elapsedPct}%;background:${fillColor};"></div>
+                    ${overrunHTML}
+                </div>
+                ${todayMarker}${estMarker}${doneMarker}
+            </div>`;
+    }
+
+    // ---- Stats row ----
+    let statsHTML = '';
+    if (startDt) {
+        const statItems = [];
+        statItems.push({ val: daysElapsed + 'd', lbl: isComplete ? 'Total Days' : 'Days Elapsed', color: '' });
+        if (estDays > 0 && !isComplete) {
+            const rem = Math.max(0, estDays - daysElapsed);
+            const over = Math.max(0, daysElapsed - estDays);
+            if (over > 0) {
+                statItems.push({ val: over + 'd', lbl: 'Days Over', color: 'var(--red)' });
+            } else {
+                statItems.push({ val: rem + 'd', lbl: 'Days Left', color: 'var(--green)' });
+            }
+        }
+        if (estDays > 0) {
+            statItems.push({ val: estDays + 'd', lbl: 'Estimated', color: 'var(--accent)' });
+        }
+        if (estCompleteStr && !isComplete) {
+            statItems.push({ val: estCompleteStr, lbl: 'Est. Complete', color: '' });
+        }
+        if (isComplete && estDays > 0) {
+            const eff = Math.round((estDays / actualTotal) * 100);
+            const effColor = eff >= 100 ? 'var(--green)' : eff >= 80 ? 'var(--yellow)' : 'var(--red)';
+            statItems.push({ val: eff + '%', lbl: 'Schedule Efficiency', color: effColor });
+        }
+        statsHTML = `<div class="reno-tl-stats">${statItems.map(s =>
+            `<div class="reno-tl-stat"><div class="val"${s.color ? ` style="color:${s.color}"`:''}">${s.val}</div><div class="lbl">${s.lbl}</div></div>`
+        ).join('')}</div>`;
+    }
+
+    container.innerHTML = `
+        <div class="reno-tl-config">
+            <div class="reno-tl-field">
+                <label>Reno Start Date</label>
+                <div class="reno-val${noStart?' not-set':''}" onclick="editRenoField(this, getSelected(), 'rehab_start_date', 'date')">${startLbl}</div>
+            </div>
+            <div class="reno-tl-field">
+                <label>Estimated Duration</label>
+                <div class="reno-val${noEst?' not-set':''}" onclick="editRenoField(this, getSelected(), 'rehab_estimated_days', 'number')">${estLbl}</div>
+            </div>
+            <div class="reno-tl-field">
+                <label>Actual Completion</label>
+                <div class="reno-val${noDone?' not-set':''}" onclick="editRenoField(this, getSelected(), 'rehab_complete_date', 'date')">${doneLbl}</div>
+            </div>
+        </div>
+        ${badge}
+        ${barHTML}
+        ${statsHTML}
+    `;
+}
+
 // ---- EXPENSES TAB ----
 function renderProjectProgress() {
     const prop = getSelected();
@@ -2213,14 +2551,10 @@ function renderProjectProgress() {
         ? `<div class="progress-stat"><div class="progress-stat-value" style="color:var(--accent)">${fmt(lenderBudget - budget)}</div><div class="progress-stat-label">Planned Capital Recapture</div></div>`
         : '';
 
-    // Daily burn rate
-    const dailySpend = m.days_held > 0 ? spent / m.days_held : 0;
-    const daysToComplete = dailySpend > 0 && remaining > 0 ? Math.ceil(remaining / dailySpend) : 0;
-
     container.innerHTML = `
         <div class="progress-header">
             <div>
-                <div class="progress-title">Project Progress</div>
+                <div class="progress-title">Budget Progress</div>
                 <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${statusMsg}</div>
             </div>
             <div class="progress-pct" style="color:${pctColor}">${pctDone.toFixed(0)}%</div>
@@ -2252,14 +2586,6 @@ function renderProjectProgress() {
                 <div class="progress-stat-label">Lender Budget</div>
             </div>
             ${drawsInfo}
-            ${dailySpend > 0 ? `<div class="progress-stat">
-                <div class="progress-stat-value">${fmt(dailySpend)}</div>
-                <div class="progress-stat-label">Avg Daily Spend</div>
-            </div>` : ''}
-            ${daysToComplete > 0 ? `<div class="progress-stat">
-                <div class="progress-stat-value">${daysToComplete}d</div>
-                <div class="progress-stat-label">Est. Days Left</div>
-            </div>` : ''}
         </div>
     `;
 }
@@ -2268,6 +2594,9 @@ function renderExpenses() {
     const prop = getSelected();
     if (!prop) return;
     const m = prop.metrics;
+
+    // Renovation timeline
+    renderRenoTimeline();
 
     // Project progress bar
     renderProjectProgress();
