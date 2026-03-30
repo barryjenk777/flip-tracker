@@ -599,6 +599,7 @@
         .metric-row .mv { font-weight: 600; }
         /* ---- Pipeline Board ---- */
         .pipeline-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        @media (max-width: 900px) { .cmd-panels { grid-template-columns: 1fr !important; } }
         .pipeline-col { background: var(--bg-primary); border-radius: var(--radius); padding: 10px; min-height: 120px; transition: all 0.2s; contain: content; }
         .pipeline-col.drag-over { border: 2px dashed var(--accent); background: rgba(79,195,247,0.06); }
         .pipeline-col-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; }
@@ -785,6 +786,7 @@
             <button class="tab-btn" onclick="switchTab('analysis')">Deal Analysis</button>
             <button class="tab-btn" onclick="switchTab('tax')">Tax & P&L</button>
             <button class="tab-btn" onclick="switchTab('prospects')">Deal Analyzer</button>
+            <button class="tab-btn" onclick="switchTab('command')">Command Center</button>
         </div>
 
         <!-- ===== PORTFOLIO TAB ===== -->
@@ -1137,6 +1139,49 @@
         </div>
     </div>
 
+    <!-- ===== COMMAND CENTER TAB ===== -->
+    <div class="tab-content" id="tab-command">
+        <!-- Goal Hero -->
+        <div class="card" style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+                <div class="card-title" style="margin-bottom:0;">Business Command Center</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:12px;color:var(--text-muted);">Year</label>
+                    <select id="cmd-year" onchange="loadCommandCenter()" style="background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:6px;font-size:13px;"></select>
+                    <label style="font-size:12px;color:var(--text-muted);">Profit Goal</label>
+                    <input type="number" id="cmd-goal-input" placeholder="e.g. 400000" style="width:130px;background:var(--bg-secondary);border:1px solid var(--accent);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:13px;">
+                    <button class="btn btn-primary" style="padding:6px 14px;font-size:12px;" onclick="saveGoal()">Set Goal</button>
+                </div>
+            </div>
+            <div id="cmd-goal-hero"></div>
+        </div>
+
+        <!-- Three Panels -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;" class="cmd-panels">
+            <!-- Funnel -->
+            <div class="card">
+                <div class="card-title">Conversion Funnel</div>
+                <div id="cmd-funnel"></div>
+            </div>
+            <!-- Projection -->
+            <div class="card">
+                <div class="card-title">Reverse Projection</div>
+                <div id="cmd-projection"></div>
+            </div>
+            <!-- Scorecard -->
+            <div class="card">
+                <div class="card-title">Business Scorecard</div>
+                <div id="cmd-scorecard"></div>
+            </div>
+        </div>
+
+        <!-- Capital Flow -->
+        <div class="card">
+            <div class="card-title" style="margin-bottom:12px;">Capital Flow Calendar</div>
+            <div id="cmd-capital-flow"></div>
+        </div>
+    </div>
+
     <!-- ===== MODALS ===== -->
     <div class="modal-overlay" id="modal-add-property">
         <div class="modal">
@@ -1343,7 +1388,7 @@ async function apiPost(url, body) {
 
 // ---- Tab switching ----
 function switchTab(name) {
-    const tabMap = { portfolio: 'Portfolio Overview', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', tax: 'Tax & P&L', prospects: 'Deal Analyzer' };
+    const tabMap = { portfolio: 'Portfolio Overview', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', tax: 'Tax & P&L', prospects: 'Deal Analyzer', command: 'Command Center' };
     const target = tabMap[name] || '';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent === target));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === 'tab-'+name));
@@ -1352,6 +1397,10 @@ function switchTab(name) {
     if (name === 'prospects') {
         btn.textContent = '+ Analyze Deal';
         btn.onclick = () => { $('qa-address').focus(); };
+    } else if (name === 'command') {
+        btn.textContent = 'Refresh';
+        btn.onclick = () => loadCommandCenter();
+        loadCommandCenter();
     } else {
         btn.textContent = '+ Add Property';
         btn.onclick = () => showAddProperty();
@@ -3679,9 +3728,261 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && $('bs-expense').classList.contains('show')) closeQuickExpense();
 });
 
+// ---- COMMAND CENTER ----
+let cmdData = null;
+let cmdGoal = 0;
+
+async function loadCommandCenter() {
+    try {
+        const year = $('cmd-year') ? +$('cmd-year').value || new Date().getFullYear() : new Date().getFullYear();
+        const [summary, settings] = await Promise.all([
+            fetch(`/api/business/summary?year=${year}`).then(r => r.json()),
+            fetch('/api/business/settings').then(r => r.json())
+        ]);
+        cmdData = summary;
+        cmdGoal = settings.annual_profit_goal || 0;
+        if ($('cmd-goal-input') && !$('cmd-goal-input').value) $('cmd-goal-input').value = cmdGoal || '';
+        renderCommandCenter(summary);
+    } catch(e) { console.error('Command center load failed:', e); }
+}
+
+function initCmdYear() {
+    const sel = $('cmd-year');
+    if (!sel) return;
+    const cur = new Date().getFullYear();
+    sel.innerHTML = [cur-1, cur, cur+1].map(y => `<option ${y===cur?'selected':''}>${y}</option>`).join('');
+}
+
+async function saveGoal() {
+    const goal = +$('cmd-goal-input').value || 0;
+    const year = +$('cmd-year').value || new Date().getFullYear();
+    await fetch('/api/business/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ annual_profit_goal: goal, year }) });
+    cmdGoal = goal;
+    loadCommandCenter();
+    showToast('Goal saved!');
+}
+
+function renderCommandCenter(d) {
+    renderGoalHero(d);
+    renderFunnel(d.funnel);
+    renderProjection(d.projection, d.goal);
+    renderScorecard(d.scorecard);
+    renderCapitalFlow(d.capital_flow, d.active_deals);
+}
+
+function renderGoalHero(d) {
+    const g = d.goal;
+    const pct = g.pct_complete;
+    const onPace = g.on_pace;
+    const goal = g.annual_profit_goal;
+    const closed = g.closed_profit;
+    const gap = g.gap;
+    const pipeline = g.pipeline_profit;
+
+    // SVG circle progress
+    const r = 54, circ = 2 * Math.PI * r;
+    const dash = circ * (pct / 100);
+    const color = pct >= 100 ? 'var(--green)' : onPace ? '#4fc3f7' : 'var(--yellow)';
+
+    const hasGoal = goal > 0;
+    $('cmd-goal-hero').innerHTML = `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+            <svg width="128" height="128" viewBox="0 0 128 128">
+                <circle cx="64" cy="64" r="${r}" fill="none" stroke="var(--bg-secondary)" stroke-width="12"/>
+                <circle cx="64" cy="64" r="${r}" fill="none" stroke="${hasGoal ? color : 'var(--border)'}" stroke-width="12"
+                    stroke-dasharray="${hasGoal ? dash : 0} ${circ}"
+                    stroke-dashoffset="${circ * 0.25}"
+                    stroke-linecap="round" style="transition:stroke-dasharray 0.8s ease"/>
+                <text x="64" y="60" text-anchor="middle" fill="var(--text-primary)" font-size="18" font-weight="700">${pct.toFixed(0)}%</text>
+                <text x="64" y="78" text-anchor="middle" fill="var(--text-muted)" font-size="10">to goal</text>
+            </svg>
+            ${hasGoal ? `<span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:700;background:${onPace?'rgba(76,175,80,0.2)':'rgba(255,152,0,0.2)'};color:${onPace?'var(--green)':'var(--yellow)'};">${onPace ? 'ON PACE' : 'BEHIND PACE'}</span>` : '<span style="font-size:11px;color:var(--text-muted);">Set a goal above</span>'}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
+            <div class="stat-card green">
+                <div class="stat-label">Closed Profit ${d.year}</div>
+                <div class="stat-value">${fmt(closed)}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${d.funnel.closed} deal${d.funnel.closed!==1?'s':''} closed</div>
+            </div>
+            ${hasGoal ? `<div class="stat-card ${gap > 0 ? 'red' : 'green'}">
+                <div class="stat-label">Gap to Goal</div>
+                <div class="stat-value">${fmt(gap)}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${g.months_remaining}mo remaining</div>
+            </div>` : ''}
+            <div class="stat-card">
+                <div class="stat-label">In Pipeline</div>
+                <div class="stat-value">${fmt(pipeline)}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Under contract / offered</div>
+            </div>
+            ${hasGoal ? `<div class="stat-card highlight">
+                <div class="stat-label">Projected Year-End</div>
+                <div class="stat-value">${fmt(closed + pipeline)}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Closed + pipeline</div>
+            </div>` : ''}
+        </div>
+    </div>`;
+}
+
+function renderFunnel(f) {
+    const stages = [
+        { label: 'Analyzed', count: f.analyzed, rate: null, color: '#4fc3f7' },
+        { label: 'Offered', count: f.offered, rate: f.analyze_to_offer_rate, color: '#ab47bc' },
+        { label: 'Under Contract', count: f.contracted, rate: f.offer_to_contract_rate, color: '#ffa726' },
+        { label: 'Closed', count: f.closed, rate: f.contract_to_close_rate, color: '#66bb6a' },
+    ];
+    const max = f.analyzed || 1;
+    $('cmd-funnel').innerHTML = stages.map((s, i) => {
+        const w = Math.max(30, Math.round((s.count / max) * 100));
+        return `
+        <div style="margin-bottom:${i < stages.length-1 ? '4px' : '0'};">
+            ${s.rate !== null ? `<div style="font-size:10px;color:var(--text-muted);text-align:center;margin-bottom:2px;">↓ ${s.rate}% convert</div>` : ''}
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;position:relative;height:36px;display:flex;align-items:center;">
+                    <div style="width:${w}%;min-width:40px;margin:0 auto;height:36px;background:${s.color}22;border:1px solid ${s.color};border-radius:6px;display:flex;align-items:center;justify-content:center;transition:width 0.5s ease;">
+                        <span style="font-size:18px;font-weight:800;color:${s.color};">${s.count}</span>
+                    </div>
+                </div>
+                <div style="width:100px;font-size:12px;color:var(--text-secondary);">${s.label}</div>
+            </div>
+        </div>`;
+    }).join('') + `
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);">
+        Overall close rate: <strong style="color:var(--green)">${f.overall_close_rate}%</strong>
+        &nbsp;·&nbsp; 1 close per <strong>${f.overall_close_rate > 0 ? Math.round(100/f.overall_close_rate) : '—'}</strong> analyzed
+    </div>`;
+}
+
+function renderProjection(p, g) {
+    const hasGoal = (g.annual_profit_goal || 0) > 0;
+    if (!hasGoal) {
+        $('cmd-projection').innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px;">Set an annual profit goal above to see your reverse projection.</div>`;
+        return;
+    }
+    const onPace = p.on_pace;
+    const paceColor = onPace ? 'var(--green)' : 'var(--yellow)';
+    $('cmd-projection').innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">To close the gap of <strong style="color:var(--text-primary)">${fmt(g.gap)}</strong>:</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="stat-card" style="padding:10px;">
+            <div class="stat-label">Deals Needed</div>
+            <div style="font-size:24px;font-weight:800;color:var(--accent);">${p.deals_needed}</div>
+            <div style="font-size:10px;color:var(--text-muted);">at avg ${fmt(p.avg_profit_per_deal)}/deal</div>
+        </div>
+        <div class="stat-card" style="padding:10px;">
+            <div class="stat-label">Leads to Analyze</div>
+            <div style="font-size:24px;font-weight:800;color:var(--purple);">${p.leads_needed}</div>
+            <div style="font-size:10px;color:var(--text-muted);">based on your close rate</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="stat-card" style="padding:8px;">
+                <div class="stat-label" style="font-size:9px;">Leads/Month Needed</div>
+                <div style="font-size:18px;font-weight:800;color:${paceColor};">${p.leads_per_month_needed}</div>
+            </div>
+            <div class="stat-card" style="padding:8px;">
+                <div class="stat-label" style="font-size:9px;">Your Current Pace</div>
+                <div style="font-size:18px;font-weight:800;color:${onPace?'var(--green)':'var(--red)'};">${p.current_monthly_pace}</div>
+            </div>
+        </div>
+        <div style="text-align:center;padding:8px;border-radius:8px;background:${onPace?'rgba(76,175,80,0.1)':'rgba(255,152,0,0.1)'};border:1px solid ${paceColor};">
+            <span style="font-weight:700;color:${paceColor};font-size:13px;">${onPace ? 'You are on pace to hit your goal' : 'You need to increase lead flow'}</span>
+        </div>
+    </div>`;
+}
+
+function renderScorecard(s) {
+    const varColor = s.avg_budget_variance_pct > 0 ? 'var(--red)' : 'var(--green)';
+    const varSign = s.avg_budget_variance_pct > 0 ? '+' : '';
+
+    const sourceRows = Object.entries(s.source_counts || {})
+        .sort((a,b) => b[1]-a[1])
+        .map(([src, cnt]) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border);">
+            <span>${src}</span><strong>${cnt}</strong></div>`).join('');
+
+    $('cmd-scorecard').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="stat-card green" style="padding:10px;">
+                <div class="stat-label" style="font-size:10px;">Avg Profit/Deal</div>
+                <div style="font-size:18px;font-weight:800;">${fmt(s.avg_profit_per_deal)}</div>
+            </div>
+            <div class="stat-card" style="padding:10px;">
+                <div class="stat-label" style="font-size:10px;">Avg Hold Time</div>
+                <div style="font-size:18px;font-weight:800;">${s.avg_hold_days > 0 ? s.avg_hold_days + 'd' : '—'}</div>
+            </div>
+            <div class="stat-card" style="padding:10px;">
+                <div class="stat-label" style="font-size:10px;">Avg ROI</div>
+                <div style="font-size:18px;font-weight:800;">${s.avg_roi > 0 ? s.avg_roi + '%' : '—'}</div>
+            </div>
+            <div class="stat-card" style="padding:10px;border-color:${varColor}33;">
+                <div class="stat-label" style="font-size:10px;">Rehab Variance</div>
+                <div style="font-size:18px;font-weight:800;color:${varColor};">${s.avg_budget_variance_pct !== 0 ? varSign + s.avg_budget_variance_pct + '%' : '—'}</div>
+            </div>
+        </div>
+        <div class="stat-card" style="padding:10px;">
+            <div class="stat-label" style="font-size:10px;">Capital Deployed (Active)</div>
+            <div style="font-size:18px;font-weight:800;">${fmt(s.capital_deployed)}</div>
+        </div>
+        ${sourceRows ? `<div style="margin-top:4px;"><div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Deal Sources</div>${sourceRows}</div>` : ''}
+    </div>`;
+}
+
+function renderCapitalFlow(flow, activeDeals) {
+    if (!activeDeals || activeDeals.length === 0) {
+        $('cmd-capital-flow').innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:16px 0;">No active deals with estimated close dates. Add estimated sale dates to your properties to see the capital flow calendar.</div>`;
+        return;
+    }
+
+    // Build 12-month calendar from today
+    const today = new Date();
+    const months = [];
+    for (let i = 0; i < 12; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+        months.push(d.toISOString().slice(0,7));
+    }
+
+    const flowMap = {};
+    (flow || []).forEach(f => { flowMap[f.month] = f; });
+
+    // Active deals with no close date
+    const noDate = activeDeals.filter(d => !d.estimated_close);
+
+    const monthCards = months.map(m => {
+        const f = flowMap[m];
+        const date = new Date(m + '-02');
+        const label = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        const isPast = m < today.toISOString().slice(0,7);
+        if (!f) return `
+            <div style="min-width:140px;padding:12px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border);opacity:${isPast?0.4:1};">
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">${label}</div>
+                <div style="font-size:11px;color:var(--border);">No closings</div>
+            </div>`;
+        return `
+            <div style="min-width:160px;padding:12px;background:var(--bg-card);border-radius:10px;border:2px solid var(--green);position:relative;">
+                <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px;">${label}</div>
+                ${f.properties.map(a => `<div style="font-size:11px;font-weight:600;color:var(--text-primary);margin-bottom:2px;">${a}</div>`).join('')}
+                <div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">
+                    <div style="font-size:10px;color:var(--text-muted);">Expected ARV</div>
+                    <div style="font-size:15px;font-weight:800;color:var(--green);">${fmt(f.expected_proceeds)}</div>
+                    <div style="font-size:10px;color:var(--text-muted);">Proj. Profit: ${fmt(f.projected_profit)}</div>
+                </div>
+            </div>`;
+    }).join('');
+
+    $('cmd-capital-flow').innerHTML = `
+    <div style="overflow-x:auto;padding-bottom:8px;">
+        <div style="display:flex;gap:10px;min-width:max-content;">${monthCards}</div>
+    </div>
+    ${noDate.length ? `<div style="margin-top:12px;padding:10px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Active deals without estimated close date:</div>
+        ${noDate.map(d => `<div style="font-size:12px;color:var(--yellow);">${d.address} — <a onclick="switchTab('property')" style="cursor:pointer;color:var(--accent);">add close date</a></div>`).join('')}
+    </div>` : ''}`;
+}
+
 // ---- Init ----
 loadFlips();
 loadProspects();
+initCmdYear();
 </script>
 </body>
 </html>

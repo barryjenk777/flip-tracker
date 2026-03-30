@@ -1366,6 +1366,194 @@ def convert_prospect(prospect_id):
     return jsonify({'property': new_prop, 'prospect_stage': 'converted'})
 
 
+# ---------------------------------------------------------------------------
+# Business Command Center
+# ---------------------------------------------------------------------------
+
+@app.route('/api/business/settings', methods=['GET', 'POST'])
+def business_settings_route():
+    data = load_data()
+    if request.method == 'POST':
+        data['business_settings'] = request.json
+        save_data(data)
+    return jsonify(data.get('business_settings', {'annual_profit_goal': 0, 'year': datetime.now().year}))
+
+
+@app.route('/api/business/summary')
+def business_summary():
+    data = load_data()
+    year = request.args.get('year', datetime.now().year, type=int)
+    biz_settings = data.get('business_settings', {})
+    annual_goal = biz_settings.get('annual_profit_goal', 0)
+    prospect_settings = data.get('prospect_settings', _default_prospect_settings())
+
+    props = data.get('properties', [])
+    prospects = data.get('prospects', [])
+
+    # Split properties into closed (sold) and active
+    closed_deals = []
+    active_deals = []
+    for prop in props:
+        m = calc_property_metrics(prop)
+        pnl = calc_pnl(prop, m)
+        if (prop.get('sale_price') or 0) > 0:
+            closed_deals.append({'prop': prop, 'metrics': m, 'pnl': pnl})
+        else:
+            active_deals.append({'prop': prop, 'metrics': m, 'pnl': pnl})
+
+    # Closed profit this year (use net_profit from P&L)
+    year_closed = [d for d in closed_deals if (d['prop'].get('sale_date') or '').startswith(str(year))]
+    closed_profit = sum(d['pnl']['net_profit'] for d in year_closed)
+    all_time_profits = [d['pnl']['net_profit'] for d in closed_deals]
+    avg_profit_per_deal = sum(all_time_profits) / len(all_time_profits) if all_time_profits else 0
+
+    # Hold times (closed deals)
+    hold_times = []
+    for d in closed_deals:
+        pd_str = d['prop'].get('purchase_date')
+        sd_str = d['prop'].get('sale_date')
+        if pd_str and sd_str:
+            try:
+                hold_times.append((datetime.strptime(sd_str, '%Y-%m-%d') - datetime.strptime(pd_str, '%Y-%m-%d')).days)
+            except ValueError:
+                pass
+    avg_hold_days = round(sum(hold_times) / len(hold_times)) if hold_times else 0
+
+    # Budget variance across all deals
+    variances = []
+    for d in closed_deals + active_deals:
+        budget = d['prop'].get('rehab_budget', 0) or 0
+        actual = sum(e.get('amount', 0) for e in d['prop'].get('expenses', []) if not e.get('is_credit'))
+        if budget > 0:
+            variances.append((actual - budget) / budget * 100)
+    avg_budget_variance = round(sum(variances) / len(variances), 1) if variances else 0
+
+    # Average ROI
+    rois = [d['metrics']['roi'] for d in closed_deals if (d['metrics'].get('roi') or 0) != 0]
+    avg_roi = round(sum(rois) / len(rois), 1) if rois else 0
+
+    # Capital deployed in active deals (purchase + rehab spent so far)
+    capital_deployed = 0
+    for d in active_deals:
+        purchase = d['prop'].get('purchase_price', 0) or 0
+        spent = sum(e.get('amount', 0) for e in d['prop'].get('expenses', []) if not e.get('is_credit'))
+        capital_deployed += purchase + spent
+
+    # Pipeline profit from prospects under contract / offer sent
+    pipeline_profit = 0
+    for p in prospects:
+        if p.get('stage') in ('under_contract', 'offer_sent'):
+            m = calc_prospect_metrics(p, prospect_settings)
+            pipeline_profit += max(0, m.get('gross_profit', 0))
+
+    # --- Conversion funnel from prospects ---
+    STAGE_ORDER = ['new_lead', 'analyzing', 'offer_sent', 'under_contract', 'passed', 'converted']
+
+    def highest_stage(p):
+        reached = set(h['stage'] for h in (p.get('stage_history') or []))
+        reached.add(p.get('stage', 'new_lead'))
+        for s in reversed(STAGE_ORDER):
+            if s in reached:
+                return s
+        return 'new_lead'
+
+    analyzed = len(prospects)
+    offered = sum(1 for p in prospects if highest_stage(p) in ('offer_sent', 'under_contract', 'converted'))
+    contracted = sum(1 for p in prospects if highest_stage(p) in ('under_contract', 'converted'))
+    # Closed = actual sold properties + converted prospects that closed
+    closed_count = len(year_closed)
+
+    analyze_to_offer = (offered / analyzed) if analyzed > 0 else 0
+    offer_to_contract = (contracted / offered) if offered > 0 else 0
+    contract_to_close = (closed_count / contracted) if contracted > 0 else 0
+    overall_close_rate = (closed_count / analyzed) if analyzed > 0 else 0
+
+    # --- Projection ---
+    today = datetime.now()
+    year_end = datetime(year, 12, 31)
+    days_remaining = max(0, (year_end - today).days)
+    months_remaining = round(days_remaining / 30.44, 1)
+
+    gap = max(0, annual_goal - closed_profit)
+    deals_needed = round(gap / avg_profit_per_deal, 1) if avg_profit_per_deal > 0 else 0
+    leads_needed = round(deals_needed / overall_close_rate) if overall_close_rate > 0 else 0
+    leads_per_month_needed = round(leads_needed / months_remaining, 1) if months_remaining > 0 else 0
+
+    days_elapsed = max(1, (today - datetime(year, 1, 1)).days)
+    months_elapsed = max(1, days_elapsed / 30.44)
+    current_monthly_pace = round(analyzed / months_elapsed, 1) if analyzed > 0 else 0
+    on_pace = (current_monthly_pace >= leads_per_month_needed) if leads_per_month_needed > 0 else True
+
+    # --- Capital flow calendar (next 12 months from active deals) ---
+    capital_flow = {}
+    for d in active_deals:
+        close_date = d['prop'].get('estimated_sale_date', '')
+        if close_date:
+            month_key = close_date[:7]
+            if month_key not in capital_flow:
+                capital_flow[month_key] = {'month': month_key, 'properties': [], 'expected_proceeds': 0, 'projected_profit': 0}
+            arv = d['prop'].get('arv', 0) or 0
+            capital_flow[month_key]['properties'].append(d['prop'].get('address', ''))
+            capital_flow[month_key]['expected_proceeds'] += arv
+            capital_flow[month_key]['projected_profit'] += max(0, d['metrics'].get('gross_profit', 0))
+
+    # Deal source breakdown
+    source_counts = {}
+    for p in prospects:
+        src = (p.get('source') or 'Unknown').strip() or 'Unknown'
+        source_counts[src] = source_counts.get(src, 0) + 1
+
+    return jsonify({
+        'year': year,
+        'goal': {
+            'annual_profit_goal': annual_goal,
+            'closed_profit': round(closed_profit),
+            'pipeline_profit': round(pipeline_profit),
+            'gap': round(gap),
+            'pct_complete': round(min(100, (closed_profit / annual_goal * 100)) if annual_goal > 0 else 0, 1),
+            'on_pace': on_pace,
+            'months_remaining': months_remaining,
+        },
+        'funnel': {
+            'analyzed': analyzed,
+            'offered': offered,
+            'contracted': contracted,
+            'closed': closed_count,
+            'analyze_to_offer_rate': round(analyze_to_offer * 100, 1),
+            'offer_to_contract_rate': round(offer_to_contract * 100, 1),
+            'contract_to_close_rate': round(contract_to_close * 100, 1),
+            'overall_close_rate': round(overall_close_rate * 100, 1),
+        },
+        'scorecard': {
+            'avg_profit_per_deal': round(avg_profit_per_deal),
+            'avg_hold_days': avg_hold_days,
+            'avg_budget_variance_pct': avg_budget_variance,
+            'avg_roi': avg_roi,
+            'capital_deployed': round(capital_deployed),
+            'total_closed_deals': len(closed_deals),
+            'source_counts': source_counts,
+        },
+        'projection': {
+            'avg_profit_per_deal': round(avg_profit_per_deal),
+            'deals_needed': deals_needed,
+            'leads_needed': leads_needed,
+            'months_remaining': months_remaining,
+            'leads_per_month_needed': leads_per_month_needed,
+            'current_monthly_pace': current_monthly_pace,
+            'on_pace': on_pace,
+        },
+        'capital_flow': sorted(capital_flow.values(), key=lambda x: x['month']),
+        'active_deals': [{
+            'address': d['prop'].get('address', ''),
+            'city': d['prop'].get('city', ''),
+            'capital_in': round((d['prop'].get('purchase_price', 0) or 0) + sum(e.get('amount', 0) for e in d['prop'].get('expenses', []) if not e.get('is_credit'))),
+            'estimated_close': d['prop'].get('estimated_sale_date', ''),
+            'arv': d['prop'].get('arv', 0) or 0,
+            'projected_profit': round(max(0, d['metrics'].get('gross_profit', 0))),
+        } for d in active_deals],
+    })
+
+
 @app.route('/api/export/csv')
 def export_csv():
     """Export all flip data as CSV for backup."""
