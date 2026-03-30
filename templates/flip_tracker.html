@@ -765,6 +765,12 @@
 <body>
     <div class="spinner-overlay" id="spinner"><div class="spinner"></div><div style="color: var(--text-secondary)">Loading flip data...</div></div>
 
+    <!-- Save error banner — shown when the server returns a 500 on a write operation -->
+    <div id="save-error-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#b71c1c;color:#fff;padding:12px 20px;font-size:14px;font-weight:600;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+        ⚠️ <span id="save-error-msg">Your last change could not be saved to disk.</span>
+        &nbsp;<button onclick="document.getElementById('save-error-banner').style.display='none'" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:13px;">Dismiss</button>
+    </div>
+
     <div class="app-header">
         <div style="display:flex;align-items:center;">
             <h1>Flip Tracker</h1>
@@ -1372,6 +1378,38 @@ function getSelected() {
     return flipData.properties.find(p => p.id === selectedPropertyId) || flipData.properties[0];
 }
 
+// ---- Notifications ----
+function showSaveError(msg) {
+    $('save-error-msg').textContent = msg || 'Your last change could not be saved to disk. Check that the /data volume is mounted.';
+    $('save-error-banner').style.display = 'block';
+}
+
+function showToast(msg, isError) {
+    let t = document.getElementById('ft-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'ft-toast';
+        t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9998;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:600;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.4);transition:opacity 0.3s;pointer-events:none;';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.background = isError ? '#b71c1c' : '#1a6b3c';
+    t.style.opacity = '1';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+async function apiFetch(url, opts) {
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+        try {
+            const body = await res.json();
+            if (body && body.error) { showSaveError(body.error); }
+        } catch(_) {}
+    }
+    return res;
+}
+
 // ---- API ----
 async function loadFlips() {
     $('spinner').classList.add('show');
@@ -1390,7 +1428,7 @@ async function loadFlips() {
 }
 
 async function apiPost(url, body) {
-    const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const res = await apiFetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     return res.json();
 }
 
@@ -1494,7 +1532,7 @@ async function submitEditProperty() {
             monthly_other: 0,
         },
     };
-    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
     hideModal('modal-edit-property');
     await loadFlips();
 }
@@ -1503,7 +1541,7 @@ async function deleteProperty() {
     const prop = getSelected();
     if (!prop) return;
     if (!confirm(`Delete ${prop.address}? This cannot be undone.`)) return;
-    await fetch(`/api/flips/${prop.id}`, { method: 'DELETE' });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'DELETE' });
     selectedPropertyId = null;
     hideModal('modal-edit-property');
     await loadFlips();
@@ -1516,7 +1554,7 @@ async function deleteExpense(idx) {
     if (!confirm('Delete this expense?')) return;
     const expenses = [...(prop.expenses || [])];
     expenses.splice(idx, 1);
-    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ expenses }) });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ expenses }) });
     await loadFlips();
 }
 
@@ -1526,7 +1564,7 @@ async function deleteDraw(idx) {
     if (!confirm('Delete this draw?')) return;
     const draws = [...(prop.draws || [])];
     draws.splice(idx, 1);
-    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ draws }) });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ draws }) });
     await loadFlips();
 }
 
@@ -1536,7 +1574,7 @@ async function deleteMortgage(idx) {
     if (!confirm('Delete this payment?')) return;
     const mortgage_payments = [...(prop.mortgage_payments || [])];
     mortgage_payments.splice(idx, 1);
-    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mortgage_payments }) });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mortgage_payments }) });
     await loadFlips();
 }
 
@@ -1547,7 +1585,7 @@ async function updateExpense(origIdx, field, value) {
     if (field === 'amount') value = parseFloat(value) || 0;
     if (field === 'is_credit') value = value === 'true';
     expenses[origIdx][field] = value;
-    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ expenses }) });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ expenses }) });
     await loadFlips();
 }
 
@@ -1557,7 +1595,7 @@ async function updateDraw(idx, field, value) {
     const draws = [...(prop.draws || [])];
     if (field === 'amount') value = parseFloat(value) || 0;
     draws[idx][field] = value;
-    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ draws }) });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ draws }) });
     await loadFlips();
 }
 
@@ -1567,7 +1605,7 @@ async function updateMortgage(idx, field, value) {
     const mortgage_payments = [...(prop.mortgage_payments || [])];
     if (field === 'amount') value = parseFloat(value) || 0;
     mortgage_payments[idx][field] = value;
-    await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mortgage_payments }) });
+    await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mortgage_payments }) });
     await loadFlips();
 }
 
@@ -1614,7 +1652,7 @@ function editTimelineDate(el, field, currentVal) {
     const save = async () => {
         const prop = getSelected();
         if (!prop) return;
-        await fetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ [field]: inp.value || null }) });
+        await apiFetch(`/api/flips/${prop.id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ [field]: inp.value || null }) });
         await loadFlips();
     };
     inp.onblur = save;
@@ -2756,7 +2794,7 @@ async function confirmCdData() {
     });
 
     try {
-        await fetch(`/api/flips/${_cdReviewData.propId}/closing-disclosure`, {
+        await apiFetch(`/api/flips/${_cdReviewData.propId}/closing-disclosure`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2889,7 +2927,7 @@ async function analyzeProspect() {
         price_reduction: +$('qa-pricereduction').value || 0,
     };
     if (!data.address || !data.asking_price) { alert('Enter at least an address and purchase price.'); return; }
-    const res = await fetch('/api/prospects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    const res = await apiFetch('/api/prospects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
     const prospect = await res.json();
     currentProspect = prospect;
     renderProspectResults(prospect);
@@ -3037,18 +3075,18 @@ async function updateProspectStage(id, stage) {
         renderPipeline();
         renderProspectHistory();
         try {
-            await fetch(`/api/prospects/${id}/stage`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ stage }) });
+            await apiFetch(`/api/prospects/${id}/stage`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ stage }) });
         } catch(e) { p.stage = oldStage; p.stage_history.pop(); renderPipeline(); }
     }
 }
 
 async function updateProspectNotes(id, notes) {
-    await fetch(`/api/prospects/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ notes }) });
+    await apiFetch(`/api/prospects/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ notes }) });
 }
 
 async function convertProspect(id) {
     if (!confirm('Convert this prospect to an active property in your portfolio?')) return;
-    await fetch(`/api/prospects/${id}/convert`, { method: 'POST' });
+    await apiFetch(`/api/prospects/${id}/convert`, { method: 'POST' });
     await loadProspects();
     await loadFlips();
     showToast('Property added to portfolio!');
@@ -3594,7 +3632,7 @@ async function saveProspectSettings() {
         'min_cap_rate','min_cash_on_cash','down_payment_pct','interest_rate','loan_term_years'];
     const settings = {};
     keys.forEach(k => { settings[k] = +$('ps-'+k).value || 0; });
-    await fetch('/api/prospects/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(settings) });
+    await apiFetch('/api/prospects/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(settings) });
     const msg = $('settings-save-msg');
     msg.style.display = 'inline';
     setTimeout(() => msg.style.display = 'none', 2000);
@@ -3764,7 +3802,7 @@ function initCmdYear() {
 async function saveGoal() {
     const goal = +$('cmd-goal-input').value || 0;
     const year = +$('cmd-year').value || new Date().getFullYear();
-    await fetch('/api/business/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ annual_profit_goal: goal, year }) });
+    await apiFetch('/api/business/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ annual_profit_goal: goal, year }) });
     cmdGoal = goal;
     loadCommandCenter();
     showToast('Goal saved!');

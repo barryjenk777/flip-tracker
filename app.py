@@ -15,6 +15,7 @@ import tempfile
 import shutil
 import signal
 import atexit
+import threading
 from datetime import datetime
 from functools import wraps
 
@@ -24,6 +25,19 @@ app.secret_key = os.environ.get('SECRET_KEY', 'flip-tracker-secret-key-change-in
 
 # Simple password protection — set APP_PASSWORD env var in Railway
 APP_PASSWORD = os.environ.get('APP_PASSWORD', '')
+
+
+class DataSaveError(Exception):
+    """Raised when save_data() cannot persist data to disk."""
+    pass
+
+
+@app.errorhandler(DataSaveError)
+def handle_save_error(e):
+    return jsonify({
+        'error': 'Your changes could not be saved to disk. The data is still in memory for this session, '
+                 'but may be lost if the server restarts. Check that the /data volume is mounted and writable.'
+    }), 500
 
 # ---------------------------------------------------------------------------
 # Tax categorization for IRS reporting (flips = dealer property = inventory)
@@ -97,6 +111,7 @@ CD_TAX_KEYWORDS = {
 # ---------------------------------------------------------------------------
 DATA_FILE = os.environ.get('DATA_FILE', '/data/flip_data.json')
 _memory_store = None
+_data_lock = threading.Lock()  # Serializes all load/save operations
 
 
 def _default_prospect_settings():
@@ -134,35 +149,34 @@ def _default_data():
 
 def load_data():
     global _memory_store
-    if _memory_store is not None:
-        return _memory_store
-    try:
-        with open(DATA_FILE, 'r') as f:
-            _memory_store = json.load(f)
-            _memory_store.setdefault('prospects', [])
-            _memory_store.setdefault('prospect_settings', _default_prospect_settings())
+    with _data_lock:
+        if _memory_store is not None:
             return _memory_store
-    except (FileNotFoundError, json.JSONDecodeError):
-        # Try to seed from bundled flip_data.json in the app directory
-        bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flip_data.json')
         try:
-            with open(bundled, 'r') as f:
+            with open(DATA_FILE, 'r') as f:
                 _memory_store = json.load(f)
                 _memory_store.setdefault('prospects', [])
                 _memory_store.setdefault('prospect_settings', _default_prospect_settings())
-                save_data(_memory_store)  # Write to volume so it persists
                 return _memory_store
         except (FileNotFoundError, json.JSONDecodeError):
-            _memory_store = _default_data()
-            return _memory_store
+            # Try to seed from bundled flip_data.json in the app directory
+            bundled = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flip_data.json')
+            try:
+                with open(bundled, 'r') as f:
+                    _memory_store = json.load(f)
+                    _memory_store.setdefault('prospects', [])
+                    _memory_store.setdefault('prospect_settings', _default_prospect_settings())
+                    # Write to volume without re-acquiring lock (already held)
+                    _save_to_disk(_memory_store)
+                    return _memory_store
+            except (FileNotFoundError, json.JSONDecodeError):
+                _memory_store = _default_data()
+                return _memory_store
 
 
-def save_data(data):
-    global _memory_store
-    _memory_store = data
+def _save_to_disk(data):
+    """Write data atomically to disk. Caller must hold _data_lock. Raises DataSaveError on failure."""
     try:
-        # Atomic write: write to temp file then rename so a crash mid-write
-        # never corrupts the live file.
         dir_name = os.path.dirname(DATA_FILE) or '.'
         os.makedirs(dir_name, exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
@@ -171,10 +185,22 @@ def save_data(data):
                 json.dump(data, f, indent=2)
             shutil.move(tmp_path, DATA_FILE)  # atomic on same filesystem
         except Exception:
-            os.unlink(tmp_path)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
             raise
     except OSError as e:
-        print(f"Warning: could not write data file: {e}")
+        print(f"ERROR: could not write data file: {e}")
+        raise DataSaveError(str(e))
+
+
+def save_data(data):
+    """Update in-memory store and persist to disk. Raises DataSaveError if disk write fails."""
+    global _memory_store
+    with _data_lock:
+        _memory_store = data
+        _save_to_disk(data)
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +209,13 @@ def save_data(data):
 def _flush_on_shutdown(*args):
     if _memory_store is not None:
         try:
+            # Snapshot first in case another thread is modifying
+            snapshot = json.loads(json.dumps(_memory_store))
             dir_name = os.path.dirname(DATA_FILE) or '.'
             os.makedirs(dir_name, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
             with os.fdopen(fd, 'w') as f:
-                json.dump(_memory_store, f, indent=2)
+                json.dump(snapshot, f, indent=2)
             shutil.move(tmp, DATA_FILE)
             print('[shutdown] Data flushed to volume successfully')
         except Exception as e:
