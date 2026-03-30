@@ -13,6 +13,8 @@ import re
 import csv
 import tempfile
 import shutil
+import signal
+import atexit
 from datetime import datetime
 from functools import wraps
 
@@ -173,6 +175,26 @@ def save_data(data):
             raise
     except OSError as e:
         print(f"Warning: could not write data file: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown — flush memory store to disk before Railway kills container
+# ---------------------------------------------------------------------------
+def _flush_on_shutdown(*args):
+    if _memory_store is not None:
+        try:
+            dir_name = os.path.dirname(DATA_FILE) or '.'
+            os.makedirs(dir_name, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+            with os.fdopen(fd, 'w') as f:
+                json.dump(_memory_store, f, indent=2)
+            shutil.move(tmp, DATA_FILE)
+            print('[shutdown] Data flushed to volume successfully')
+        except Exception as e:
+            print(f'[shutdown] WARNING: could not flush data on shutdown: {e}')
+
+atexit.register(_flush_on_shutdown)
+signal.signal(signal.SIGTERM, _flush_on_shutdown)  # Railway sends SIGTERM before killing
 
 
 # ---------------------------------------------------------------------------
