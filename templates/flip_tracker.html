@@ -2225,43 +2225,26 @@ function renderCashInvested(m, prop) {
     const el = $('cash-invested-card');
     if (!el) return;
 
-    // ── Resolve the true total ──────────────────────────────────────
-    // Priority: manual override → sub-field sum → CD cash_to_close
-    const cdPurchase = prop.closing_disclosure_purchase || {};
-    const cdTotal = cdPurchase.cash_to_close || 0;
-    const emd = prop.emd || 0;
-    const appraisal = prop.appraisal_fee || 0;
-    const commitment = prop.commitment_fee || 0;
-    const downPayment = prop.down_payment || 0;
-    const subFieldSum = emd + appraisal + commitment + downPayment;
+    const total = m.cash_invested || 0;
+    const closingCash = m.pre_closing_cash || 0;
+    const postAcqNet  = m.post_acq_net   || 0;   // rehab + holding − draws (can be negative)
+    const drawSurplus = m.draw_surplus   || 0;
 
-    // Use backend metric first (already has the fallback logic), but if still 0 read CD directly
-    const total = m.cash_invested > 0 ? m.cash_invested : (subFieldSum > 0 ? subFieldSum : cdTotal);
-
-    // Source label
-    const fromCD = total > 0 && total === cdTotal && subFieldSum === 0 && !(prop.cash_invested > 0);
-    const partnerTotal = total > 0 ? (total + (m.distributable_profit || (m.gross_profit - total)) * ((prop.partner_split_pct||50)/100)) : m.partner_total;
-
-    // ── Known items and auto-calculated remainder ──────────────────
-    const knownSum = subFieldSum;
-    const other = total > 0 ? Math.max(total - knownSum, 0) : 0;  // "Other Closing Costs" remainder
-
-    const breakdownRows = [
-        { label: 'Earnest Money Deposit (EMD)', field: 'emd', value: emd },
-        { label: 'Appraisal Fee', field: 'appraisal_fee', value: appraisal },
-        { label: 'Commitment Fee', field: 'commitment_fee', value: commitment },
-        { label: 'Down Payment', field: 'down_payment', value: downPayment },
-    ];
+    // Post-acq display: if draws more than covered rehab, show the surplus as a credit
+    const postAcqPositive = Math.max(postAcqNet, 0);
+    const hasDrawSurplus  = drawSurplus > 0;
 
     el.innerHTML = `
     <div class="card" style="border:2px solid var(--yellow);background:linear-gradient(135deg,var(--bg-card) 0%,rgba(255,167,38,0.05) 100%);">
+
+        <!-- Header: total + your check -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <div>
                 <div class="card-title" style="color:var(--yellow);margin-bottom:4px;">💰 Your Cash Invested</div>
                 <div style="font-size:12px;color:var(--text-secondary);">Returned to you <strong style="color:var(--yellow)">before</strong> the profit split at closing.</div>
             </div>
             <div style="text-align:right;">
-                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">${fromCD ? '📄 From Closing Disclosure' : 'Total Capital'}</div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">Total Capital</div>
                 <div style="font-size:36px;font-weight:800;color:var(--yellow);">${total > 0 ? fmt(total) : '<span style="color:var(--text-muted);font-size:22px;">Not set</span>'}</div>
                 ${total > 0 ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Your Total at Close: <strong style="color:var(--accent)">${fmt(m.partner_total)}</strong></div>` : ''}
             </div>
@@ -2269,34 +2252,34 @@ function renderCashInvested(m, prop) {
 
         ${total === 0 ? `
         <div style="background:var(--yellow-dim);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-            No cash invested recorded. Click tiles below to enter your out-of-pocket costs, or upload a purchase Closing Disclosure on the Tax P&amp;L tab to auto-populate.
+            No cash invested recorded. Upload a purchase Closing Disclosure on the Tax &amp; P&amp;L tab, or enter a purchase settlement amount in Edit Property.
         </div>` : ''}
 
-        <!-- Breakdown table — always adds up to total -->
-        <div style="background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);overflow:hidden;margin-bottom:14px;">
-            <div style="padding:10px 14px;background:rgba(255,167,38,0.08);border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">
-                Breakdown — click any line to edit
-            </div>
-            ${breakdownRows.map(r => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;"
-                 onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background=''"
-                 onclick="editCashInvestedField('${prop.id}','${r.field}',${total})">
-                <span style="font-size:13px;color:${r.value>0?'var(--text-primary)':'var(--text-muted)'};">${r.label}</span>
-                <span style="font-size:14px;font-weight:700;color:${r.value>0?'var(--yellow)':'var(--text-muted)'};">
-                    ${r.value > 0 ? fmt(r.value) : '✏️ tap to set'}
-                </span>
-            </div>`).join('')}
-            ${other > 0 ? `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);">
-                <span style="font-size:13px;color:var(--text-secondary);">Other Closing Costs <span style="font-size:11px;color:var(--text-muted)">(auto-calculated)</span></span>
-                <span style="font-size:14px;font-weight:700;color:var(--text-secondary);">${fmt(other)}</span>
-            </div>` : ''}
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(255,167,38,0.1);">
-                <span style="font-size:14px;font-weight:700;color:var(--yellow);">Total Cash Invested</span>
-                <span style="font-size:18px;font-weight:800;color:var(--yellow);">${fmt(total)}</span>
-            </div>
-        </div>
+        <!-- Two category boxes -->
+        ${total > 0 ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
 
+            <!-- Box 1: Cash at Closing -->
+            <div style="background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);padding:14px;">
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Cash at Closing</div>
+                <div style="font-size:24px;font-weight:800;color:var(--yellow);">${fmt(closingCash)}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Paid before &amp; at the closing table</div>
+            </div>
+
+            <!-- Box 2: Post-Acquisition (net of draws) -->
+            <div style="background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);padding:14px;">
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Post-Acquisition</div>
+                ${hasDrawSurplus && postAcqNet <= 0 ? `
+                <div style="font-size:24px;font-weight:800;color:var(--green);">$0</div>
+                <div style="font-size:11px;color:var(--green);margin-top:4px;">✓ Draw surplus of ${fmt(drawSurplus)} covered all rehab costs</div>
+                ` : `
+                <div style="font-size:24px;font-weight:800;color:var(--yellow);">${fmt(postAcqPositive)}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Rehab &amp; holding costs, net of ${fmt(m.total_draws || 0)} in draws</div>
+                `}
+            </div>
+        </div>` : ''}
+
+        <!-- Reimbursement flow pills -->
         ${total > 0 ? `
         <div style="background:var(--bg-primary);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);">
             <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Reimbursement Flow at Closing</div>

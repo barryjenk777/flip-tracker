@@ -453,6 +453,17 @@ def calc_property_metrics(prop):
     if days_held > 180:
         flags.append({'type': 'warning', 'msg': f'{days_held} days held (>180 benchmark)'})
 
+    # Two-box breakdown for Cash Invested card
+    # Box 1: what was paid at/before the closing table
+    if purchase_settlement > 0:
+        pre_closing_cash = purchase_settlement + emd + commitment_fee + appraisal_fee
+    elif cd_cash_to_close > 0:
+        pre_closing_cash = cd_cash_to_close
+    else:
+        pre_closing_cash = emd + commitment_fee + appraisal_fee + down_payment
+    # Box 2: rehab + holding costs minus all lender draws received (net post-acquisition spend)
+    post_acq_net = total_rehab + total_holding_cost - total_draws
+
     return {
         'purchase_price': purchase_price, 'arv': arv, 'sale_price': sale_price,
         'effective_sale': effective_sale, 'sqft': sqft, 'status': status,
@@ -473,6 +484,7 @@ def calc_property_metrics(prop):
         'emd': emd, 'appraisal_fee': appraisal_fee, 'down_payment': down_payment,
         'commitment_fee': commitment_fee, 'cash_invested': cash_invested,
         'cash_invested_source': cash_invested_source,
+        'pre_closing_cash': pre_closing_cash, 'post_acq_net': post_acq_net,
         'net_proceeds_at_close': net_proceeds_at_close,
         'distribution_base': distribution_base,
         'sale_commission': sale_commission, 'sale_commission_pct': sale_commission_pct,
