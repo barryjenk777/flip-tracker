@@ -3331,8 +3331,19 @@ async function reprocessCDs() {
     // apiFetch returns a Response object — must parse JSON explicitly
     if (res && res.ok) {
         const data = await res.json();
-        const filled = Object.entries(data.updates || {}).map(([k,v]) => `${k}: ${v}`).join(', ');
-        showToast(filled ? `Updated from CDs: ${filled}` : 'CDs re-processed — no new data found to fill in');
+        const u = data.updates || {};
+        const lines = [];
+        const fmt = v => typeof v === 'number' ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : v;
+        if (u.purchase_settlement)       lines.push(`Cash invested set to ${fmt(u.purchase_settlement)}`);
+        if (u.cd_purchase_cash_to_close) lines.push(`Purchase CD cash-to-close: ${fmt(u.cd_purchase_cash_to_close)}`);
+        if (u.purchase_date)             lines.push(`Purchase date: ${u.purchase_date}`);
+        if (u.sale_price)                lines.push(`Sale price: ${fmt(u.sale_price)}`);
+        if (u.sale_date)                 lines.push(`Sale date: ${u.sale_date}`);
+        if (u.cash_invested_recalculated) lines.push('Cash invested recalculated from CD');
+        const msg = lines.length
+            ? `✅ CDs re-read — ${lines.join(' · ')}`
+            : '✅ CDs re-read — figures already up to date, nothing new to pull in';
+        showToast(msg);
         await loadFlips();
     } else {
         showToast('Re-process failed — check that a CD is uploaded', true);
