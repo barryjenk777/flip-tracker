@@ -343,8 +343,21 @@ def calc_property_metrics(prop):
     cash_in_deal = total_cash_oop - draws_applied - draw_surplus
 
     # cash_invested = out-of-pocket capital returned to Barry first before profit split
-    # Priority: manual override → cash_in_deal (when purchase_settlement is entered) →
-    #           sub-field sum → purchase CD cash_to_close
+    #
+    # Priority order:
+    #   1. Manual override (user explicitly typed a value)
+    #   2. purchase_settlement → cash_in_deal (full draw-adjusted OOP calculation)
+    #   3. Purchase CD cash_to_close (uploaded CD has the real number)
+    #   4. Sub-field sum (emd + appraisal + commitment + down) — last resort only
+    #
+    # IMPORTANT: sub-fields are treated as DISPLAY-ONLY breakdown rows in the
+    # Cash Invested card. When a CD is uploaded or purchase_settlement is set,
+    # sub-fields do NOT change the total — they just label what's inside it.
+    # This lets Barry enter EMD, appraisal, commitment as breakdown components
+    # without accidentally inflating the total.
+    cd_pur = prop.get('closing_disclosure_purchase', {})
+    cd_cash_to_close = cd_pur.get('cash_to_close', 0) or 0
+
     cash_invested_manual = prop.get('cash_invested', 0) or 0
     cash_invested_source = 'manual'
     if cash_invested_manual > 0:
@@ -353,14 +366,17 @@ def calc_property_metrics(prop):
         # cash_in_deal accounts for draws and is the most accurate measure
         cash_invested = max(cash_in_deal, 0)
         cash_invested_source = 'calculated'
+    elif cd_cash_to_close > 0:
+        # CD uploaded — use real number, skip sub-field sum so breakdown rows
+        # can be safely entered without changing the total
+        cash_invested = cd_cash_to_close
+        cash_invested_source = 'closing_disclosure'
     elif (emd + appraisal_fee + commitment_fee + down_payment) > 0:
         cash_invested = emd + appraisal_fee + commitment_fee + down_payment
         cash_invested_source = 'subfields'
     else:
-        cd_pur = prop.get('closing_disclosure_purchase', {})
-        cd_cash_to_close = cd_pur.get('cash_to_close', 0) or 0
-        cash_invested = cd_cash_to_close
-        cash_invested_source = 'closing_disclosure' if cd_cash_to_close > 0 else 'manual'
+        cash_invested = 0
+        cash_invested_source = 'manual'
 
     # ---- Profit ----
     total_costs = purchase_price + acq_closing_cost + total_rehab + sale_commission + sale_closing + total_holding_cost
