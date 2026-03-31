@@ -2234,25 +2234,27 @@ function renderCashInvested(m, prop) {
     const postAcqPositive = Math.max(postAcqNet, 0);
     const hasDrawSurplus  = drawSurplus > 0;
 
+    const splitPct = m.partner_split_pct || 50;
+    const partnerBShare = m.distributable_profit - m.partner_share;
+
     el.innerHTML = `
     <div class="card" style="border:2px solid var(--yellow);background:linear-gradient(135deg,var(--bg-card) 0%,rgba(255,167,38,0.05) 100%);">
 
-        <!-- Header: total + your check -->
+        <!-- Header: capital total -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <div>
-                <div class="card-title" style="color:var(--yellow);margin-bottom:4px;">💰 Your Cash Invested</div>
-                <div style="font-size:12px;color:var(--text-secondary);">Returned to you <strong style="color:var(--yellow)">before</strong> the profit split at closing.</div>
+                <div class="card-title" style="color:var(--yellow);margin-bottom:4px;">💰 Capital Invested</div>
+                <div style="font-size:12px;color:var(--text-secondary);">Returned to the cash-invested partner <strong style="color:var(--yellow)">before</strong> the profit split at closing.</div>
             </div>
             <div style="text-align:right;">
                 <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">Total Capital</div>
                 <div style="font-size:36px;font-weight:800;color:var(--yellow);">${total > 0 ? fmt(total) : '<span style="color:var(--text-muted);font-size:22px;">Not set</span>'}</div>
-                ${total > 0 ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Your Total at Close: <strong style="color:var(--accent)">${fmt(m.partner_total)}</strong></div>` : ''}
             </div>
         </div>
 
         ${total === 0 ? `
         <div style="background:var(--yellow-dim);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-            No cash invested recorded. Upload a purchase Closing Disclosure on the Tax &amp; P&amp;L tab, or enter a purchase settlement amount in Edit Property.
+            No capital recorded. Upload a purchase Closing Disclosure on the Tax &amp; P&amp;L tab, or enter a purchase settlement amount in Edit Property.
         </div>` : ''}
 
         <!-- Two category boxes -->
@@ -2277,20 +2279,28 @@ function renderCashInvested(m, prop) {
                 <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Rehab &amp; holding costs, net of ${fmt(m.total_draws || 0)} in draws</div>
                 `}
             </div>
-        </div>` : ''}
+        </div>
 
-        <!-- Reimbursement flow pills -->
-        ${total > 0 ? `
+        <!-- Distribution flow -->
         <div style="background:var(--bg-primary);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Reimbursement Flow at Closing</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px;">How Proceeds Are Distributed at Closing</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap;">
-                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);">${m.net_proceeds_at_close > 0 ? 'CD Proceeds' : 'Net Profit'} ${fmt(m.distribution_base)}</span>
+                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);">${m.net_proceeds_at_close > 0 ? 'CD Proceeds' : 'Est. Net Profit'} ${fmt(m.distribution_base)}</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(255,167,38,0.2);padding:4px 10px;border-radius:20px;color:var(--yellow);font-weight:700;">Return ${fmt(total)}</span>
+                <span style="background:rgba(255,167,38,0.2);padding:4px 10px;border-radius:20px;color:var(--yellow);font-weight:700;">Capital Return ${fmt(total)}</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.distributable_profit)} ${m.partner_split_pct||50}/${100-(m.partner_split_pct||50)}</span>
-                <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);font-weight:700;">Your Check: ${fmt(m.partner_total)}</span>
+                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.distributable_profit)} ${splitPct}/${100-splitPct}</span>
+            </div>
+            <!-- Two check boxes -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+                <div style="background:rgba(79,195,247,0.08);border:1px solid rgba(79,195,247,0.25);border-radius:6px;padding:10px;display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;">Cash-Invested Partner</span>
+                    <span style="font-size:20px;font-weight:800;color:var(--accent);">+${fmt(m.partner_total)}</span>
+                </div>
+                <div style="background:rgba(102,187,106,0.08);border:1px solid rgba(102,187,106,0.25);border-radius:6px;padding:10px;display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;">Non-Cash-Invested Partner</span>
+                    <span style="font-size:20px;font-weight:800;color:var(--green);">+${fmt(partnerBShare)}</span>
+                </div>
             </div>
         </div>` : ''}
     </div>`;
