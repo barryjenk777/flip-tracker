@@ -329,35 +329,50 @@ def calc_property_metrics(prop):
     appraisal_fee = prop.get('appraisal_fee', 0) or 0
     commitment_fee = prop.get('commitment_fee', 0) or 0
     down_payment = prop.get('down_payment', 0) or 0
-    # cash_invested = money the partnership put in out-of-pocket (returned before profit split)
-    # Can be set directly or auto-computed from sub-fields
-    cash_invested_manual = prop.get('cash_invested', 0) or 0
-    cash_invested = cash_invested_manual if cash_invested_manual > 0 else (emd + appraisal_fee + commitment_fee + down_payment)
-    # Fallback: if no manual data, use cash_to_close from the purchase Closing Disclosure
-    cash_invested_source = 'manual'
-    if cash_invested == 0:
-        cd_pur = prop.get('closing_disclosure_purchase', {})
-        cd_cash_to_close = cd_pur.get('cash_to_close', 0) or 0
-        if cd_cash_to_close > 0:
-            cash_invested = cd_cash_to_close
-            cash_invested_source = 'closing_disclosure'
 
+    # Compute cash_in_deal first — needs to happen before cash_invested fallback
     if purchase_settlement > 0:
         total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + down_payment + total_rehab + total_holding_cost
     else:
         total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost
-    # Draws reimburse rehab — any surplus reduces cash in deal
     draw_surplus = max(total_draws - total_rehab, 0)
-    # Also subtract draws that covered rehab (not just surplus)
     draws_applied = min(total_draws, total_rehab)
     cash_in_deal = total_cash_oop - draws_applied - draw_surplus
+
+    # cash_invested = out-of-pocket capital returned to Barry first before profit split
+    # Priority: manual override → cash_in_deal (when purchase_settlement is entered) →
+    #           sub-field sum → purchase CD cash_to_close
+    cash_invested_manual = prop.get('cash_invested', 0) or 0
+    cash_invested_source = 'manual'
+    if cash_invested_manual > 0:
+        cash_invested = cash_invested_manual
+    elif purchase_settlement > 0:
+        # cash_in_deal accounts for draws and is the most accurate measure
+        cash_invested = max(cash_in_deal, 0)
+        cash_invested_source = 'calculated'
+    elif (emd + appraisal_fee + commitment_fee + down_payment) > 0:
+        cash_invested = emd + appraisal_fee + commitment_fee + down_payment
+        cash_invested_source = 'subfields'
+    else:
+        cd_pur = prop.get('closing_disclosure_purchase', {})
+        cd_cash_to_close = cd_pur.get('cash_to_close', 0) or 0
+        cash_invested = cd_cash_to_close
+        cash_invested_source = 'closing_disclosure' if cd_cash_to_close > 0 else 'manual'
 
     # ---- Profit ----
     total_costs = purchase_price + acq_closing_cost + total_rehab + sale_commission + sale_closing + total_holding_cost
     gross_profit = effective_sale - total_costs
     profit_margin = (gross_profit / effective_sale * 100) if effective_sale > 0 else 0
-    # Distributable profit = net profit after returning cash capital invested
-    distributable_profit = gross_profit - cash_invested
+
+    # Distribution base: use actual net proceeds from sale CD if available (most accurate),
+    # otherwise fall back to accounting gross_profit.
+    # Sale CD cash_to_close = what the seller actually received at closing.
+    cd_sale_data = prop.get('closing_disclosure_sale', {})
+    net_proceeds_at_close = cd_sale_data.get('cash_to_close', 0) or 0
+    distribution_base = net_proceeds_at_close if net_proceeds_at_close > 0 else gross_profit
+
+    # Distributable profit = distribution base after returning cash capital invested
+    distributable_profit = distribution_base - cash_invested
     partner_share = distributable_profit * (partner_split_pct / 100)  # each partner's share of distributable
     partner_total = cash_invested + partner_share  # what Partner A (Barry) actually takes home
 
@@ -439,6 +454,8 @@ def calc_property_metrics(prop):
         'emd': emd, 'appraisal_fee': appraisal_fee, 'down_payment': down_payment,
         'commitment_fee': commitment_fee, 'cash_invested': cash_invested,
         'cash_invested_source': cash_invested_source,
+        'net_proceeds_at_close': net_proceeds_at_close,
+        'distribution_base': distribution_base,
         'sale_commission': sale_commission, 'sale_commission_pct': sale_commission_pct,
         'sale_closing': sale_closing, 'sale_closing_cost_pct': sale_closing_cost_pct,
         'total_costs': total_costs, 'gross_profit': gross_profit,
