@@ -2385,9 +2385,34 @@ def reprocess_closing_disclosure(prop_id):
         parsed = parse_closing_disclosure(pdf_bytes)
         if parsed.get('cash_to_close', 0) > 0:
             cd_purchase['cash_to_close'] = parsed['cash_to_close']
+            updates['cd_purchase_cash_to_close'] = parsed['cash_to_close']
             if not prop.get('purchase_settlement', 0):
+                # CD cash_to_close is the total wire to title at closing.
+                # The sub-fields (emd, appraisal, commitment) are paid BEFORE closing
+                # and are credited in the CD — so the CD total already nets them out.
+                # Set purchase_settlement = CD cash_to_close so the backend can
+                # calculate cash_in_deal correctly, and clear the stale sub-fields
+                # so they aren't double-counted on top of the settlement.
                 prop['purchase_settlement'] = parsed['cash_to_close']
                 updates['purchase_settlement'] = parsed['cash_to_close']
+                # Only zero out sub-fields if none of them were manually set above
+                # the CD cash_to_close (which would indicate they were NOT in the CD)
+                emd = prop.get('emd', 0) or 0
+                appraisal = prop.get('appraisal_fee', 0) or 0
+                commitment = prop.get('commitment_fee', 0) or 0
+                down = prop.get('down_payment', 0) or 0
+                sub_sum = emd + appraisal + commitment + down
+                if sub_sum > 0 and sub_sum < parsed['cash_to_close']:
+                    # Sub-fields look like they were inside the CD total — move them
+                    # to named breakdown only, keep emd separate (paid before closing)
+                    # but clear commitment/appraisal/down since those ARE in the CD
+                    prop['commitment_fee'] = 0
+                    prop['appraisal_fee'] = 0
+                    prop['down_payment'] = 0
+                    updates['cleared_subfields_now_in_cd'] = True
+                # Also clear stale manual cash_invested so backend recalculates
+                prop['cash_invested'] = 0
+                updates['cash_invested_cleared'] = True
         if parsed.get('closing_date') and not prop.get('purchase_date'):
             d = parse_closing_date(parsed['closing_date'])
             if d:

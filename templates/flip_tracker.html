@@ -3328,10 +3328,14 @@ async function reprocessCDs() {
     if (btn) { btn.disabled = true; btn.textContent = '↻ Processing…'; }
     const res = await apiFetch(`/api/flips/${prop.id}/closing-disclosure/reprocess`, { method: 'POST' });
     if (btn) { btn.disabled = false; btn.textContent = '↻ Re-process CDs'; }
-    if (res && res.updates) {
-        const filled = Object.entries(res.updates).map(([k,v]) => `${k}: ${v}`).join(', ');
+    // apiFetch returns a Response object — must parse JSON explicitly
+    if (res && res.ok) {
+        const data = await res.json();
+        const filled = Object.entries(data.updates || {}).map(([k,v]) => `${k}: ${v}`).join(', ');
         showToast(filled ? `Updated from CDs: ${filled}` : 'CDs re-processed — no new data found to fill in');
         await loadFlips();
+    } else {
+        showToast('Re-process failed — check that a CD is uploaded', true);
     }
 }
 
