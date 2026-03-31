@@ -623,6 +623,8 @@ def parse_closing_disclosure(pdf_bytes):
         'interest_rate': 0,
         'closing_costs_total': 0,
         'cash_to_close': 0,
+        'sale_price': 0,
+        'closing_date': '',
         'line_items': [],
         'raw_text': '',
     }
@@ -687,6 +689,32 @@ def parse_closing_disclosure(pdf_bytes):
                 if val > 100:
                     result['cash_to_close'] = val
                     break
+
+        # Extract sale price — CFPB CD, HUD-1 formats
+        for pattern in [
+            r'(?:Contract\s*)?Sales?\s*Price\s*\$?\s*([\d,]+\.?\d*)',
+            r'Contract\s*Sales\s*Price\s*\$?\s*([\d,]+\.?\d*)',
+            r'101\.?\s*Contract\s*sales\s*price\s*\$?\s*([\d,]+\.?\d*)',
+            r'Purchase\s*Price\s*\$?\s*([\d,]+\.?\d*)',
+        ]:
+            m = re.search(pattern, all_text, re.IGNORECASE)
+            if m:
+                val = float(m.group(1).replace(',', ''))
+                if val > 50000:
+                    result['sale_price'] = val
+                    break
+
+        # Extract closing / settlement date
+        for pattern in [
+            r'Closing\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
+            r'Settlement\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
+            r'Disbursement\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
+            r'Closing\s*Date[:\s]+(\w+\s+\d{1,2},?\s+\d{4})',
+        ]:
+            m = re.search(pattern, all_text, re.IGNORECASE)
+            if m:
+                result['closing_date'] = m.group(1).strip()
+                break
 
         # Extract line items — look for lines with dollar amounts
         # IMPORTANT: Filter out non-closing-cost items (sale price, loan amount, deposits, etc.)
@@ -2217,6 +2245,8 @@ def upload_closing_disclosure(prop_id):
         'interest_rate': parsed.get('interest_rate', 0),
         'closing_costs_total': parsed.get('closing_costs_total', 0),
         'cash_to_close': parsed.get('cash_to_close', 0),
+        'sale_price': parsed.get('sale_price', 0),
+        'closing_date': parsed.get('closing_date', ''),
         'line_items': parsed.get('line_items', []),
         'raw_text': parsed.get('raw_text', ''),
     }
@@ -2224,10 +2254,34 @@ def upload_closing_disclosure(prop_id):
     key = f'closing_disclosure_{cd_type}'
     prop[key] = cd_data
 
-    # For purchase CDs: auto-populate purchase_settlement from cash_to_close if not set
-    if cd_type == 'purchase' and cd_data['cash_to_close'] > 0:
-        if not prop.get('purchase_settlement', 0):
+    def parse_closing_date(raw):
+        """Convert various date formats to YYYY-MM-DD."""
+        for fmt in ['%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%B %d %Y']:
+            try:
+                return datetime.strptime(raw, fmt).strftime('%Y-%m-%d')
+            except ValueError:
+                continue
+        return None
+
+    if cd_type == 'purchase':
+        # Auto-populate purchase_settlement from cash_to_close if not set
+        if cd_data['cash_to_close'] > 0 and not prop.get('purchase_settlement', 0):
             prop['purchase_settlement'] = cd_data['cash_to_close']
+        # Auto-populate purchase_date from closing date if not set
+        if cd_data['closing_date'] and not prop.get('purchase_date'):
+            parsed_date = parse_closing_date(cd_data['closing_date'])
+            if parsed_date:
+                prop['purchase_date'] = parsed_date
+
+    if cd_type == 'sale':
+        # Auto-populate sale_price from CD if not set
+        if cd_data['sale_price'] > 0 and not prop.get('sale_price', 0):
+            prop['sale_price'] = cd_data['sale_price']
+        # Auto-populate sale_date from closing date if not set
+        if cd_data['closing_date'] and not prop.get('sale_date'):
+            parsed_date = parse_closing_date(cd_data['closing_date'])
+            if parsed_date:
+                prop['sale_date'] = parsed_date
 
     save_data(data)
 
@@ -2240,6 +2294,8 @@ def upload_closing_disclosure(prop_id):
         'interest_rate': parsed.get('interest_rate', 0),
         'closing_costs_total': parsed.get('closing_costs_total', 0),
         'cash_to_close': parsed.get('cash_to_close', 0),
+        'sale_price': parsed.get('sale_price', 0),
+        'closing_date': parsed.get('closing_date', ''),
         'error': parsed.get('error'),
     })
 
@@ -2267,6 +2323,65 @@ def update_closing_disclosure(prop_id):
 
     save_data(data)
     return jsonify({'success': True})
+
+
+@app.route('/api/flips/<prop_id>/closing-disclosure/reprocess', methods=['POST'])
+def reprocess_closing_disclosure(prop_id):
+    """Re-parse already-uploaded CDs and auto-fill sale_price, sale_date, purchase_date, purchase_settlement."""
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+
+    def parse_closing_date(raw):
+        for fmt in ['%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%B %d %Y']:
+            try:
+                return datetime.strptime(raw, fmt).strftime('%Y-%m-%d')
+            except ValueError:
+                continue
+        return None
+
+    updates = {}
+
+    # Re-parse purchase CD
+    cd_purchase = prop.get('closing_disclosure_purchase', {})
+    if cd_purchase.get('pdf_base64'):
+        pdf_bytes = base64.b64decode(cd_purchase['pdf_base64'])
+        parsed = parse_closing_disclosure(pdf_bytes)
+        if parsed.get('cash_to_close', 0) > 0:
+            cd_purchase['cash_to_close'] = parsed['cash_to_close']
+            if not prop.get('purchase_settlement', 0):
+                prop['purchase_settlement'] = parsed['cash_to_close']
+                updates['purchase_settlement'] = parsed['cash_to_close']
+        if parsed.get('closing_date') and not prop.get('purchase_date'):
+            d = parse_closing_date(parsed['closing_date'])
+            if d:
+                prop['purchase_date'] = d
+                updates['purchase_date'] = d
+        if parsed.get('sale_price', 0) > 0:
+            cd_purchase['sale_price'] = parsed['sale_price']
+
+    # Re-parse sale CD
+    cd_sale = prop.get('closing_disclosure_sale', {})
+    if cd_sale.get('pdf_base64'):
+        pdf_bytes = base64.b64decode(cd_sale['pdf_base64'])
+        parsed = parse_closing_disclosure(pdf_bytes)
+        if parsed.get('sale_price', 0) > 0:
+            cd_sale['sale_price'] = parsed['sale_price']
+            if not prop.get('sale_price', 0):
+                prop['sale_price'] = parsed['sale_price']
+                updates['sale_price'] = parsed['sale_price']
+        if parsed.get('cash_to_close', 0) > 0:
+            cd_sale['cash_to_close'] = parsed['cash_to_close']
+        if parsed.get('closing_date') and not prop.get('sale_date'):
+            d = parse_closing_date(parsed['closing_date'])
+            if d:
+                prop['sale_date'] = d
+                updates['sale_date'] = d
+
+    save_data(data)
+    metrics = calc_property_metrics(prop)
+    return jsonify({'success': True, 'updates': updates, 'metrics': metrics})
 
 
 def seed_22nd_street():

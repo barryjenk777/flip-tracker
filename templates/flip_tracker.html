@@ -1154,7 +1154,10 @@
             <!-- Closing Disclosure Upload Section -->
             <div class="card" id="cd-upload-section">
                 <div class="card-title">Closing Disclosures</div>
-                <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Upload your Closing Disclosure PDFs to auto-extract itemized closing costs for tax reporting.</p>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <p style="font-size:12px;color:var(--text-muted);margin:0;">Upload your Closing Disclosure PDFs to auto-extract itemized closing costs, sale price, and dates.</p>
+                    <button class="btn btn-secondary btn-sm" id="cd-reprocess-btn" onclick="reprocessCDs()" style="white-space:nowrap;margin-left:12px;" title="Re-process already-uploaded CDs to fill in sale price, dates, and cash invested">↻ Re-process CDs</button>
+                </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="cd-uploads-grid">
                     <div id="cd-purchase-zone" class="cd-upload-zone" onclick="initCdUpload('purchase')">
                         <div class="cd-zone-icon">📋</div>
@@ -3308,6 +3311,20 @@ function renderCdStatus(prop) {
     } else {
         sZone.classList.remove('uploaded');
         $('cd-sale-status').textContent = 'Click to upload PDF';
+    }
+}
+
+async function reprocessCDs() {
+    const prop = getSelected();
+    if (!prop) return;
+    const btn = $('cd-reprocess-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '↻ Processing…'; }
+    const res = await apiFetch(`/api/flips/${prop.id}/closing-disclosure/reprocess`, { method: 'POST' });
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Re-process CDs'; }
+    if (res && res.updates) {
+        const filled = Object.entries(res.updates).map(([k,v]) => `${k}: ${v}`).join(', ');
+        showToast(filled ? `Updated from CDs: ${filled}` : 'CDs re-processed — no new data found to fill in');
+        await loadFlips();
     }
 }
 
