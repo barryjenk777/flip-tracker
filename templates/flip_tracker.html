@@ -2376,9 +2376,9 @@ function renderClosingSettlement(m, prop) {
             <div style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-secondary);letter-spacing:0.5px;">Step 2 — Checks at Closing</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
 
-                <!-- Partner A (Barry) -->
+                <!-- Cash-Invested Partner -->
                 <div style="background:linear-gradient(135deg,rgba(79,195,247,0.15) 0%,rgba(79,195,247,0.05) 100%);border:2px solid var(--accent);border-radius:8px;padding:14px;">
-                    <div style="font-size:10px;color:var(--accent);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">Partner A (You)</div>
+                    <div style="font-size:10px;color:var(--accent);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">Cash-Invested Partner</div>
                     <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:3px;">
                         <span>Capital returned</span>
                         <span style="color:var(--yellow);">+${fmt(m.cash_invested)}</span>
@@ -2388,14 +2388,14 @@ function renderClosingSettlement(m, prop) {
                         <span style="color:var(--green);">+${fmt(partnerShare)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:12px;font-weight:700;color:var(--accent);">Your Check</span>
+                        <span style="font-size:12px;font-weight:700;color:var(--accent);">Check at Close</span>
                         <span style="font-size:26px;font-weight:800;color:var(--accent);">+${fmt(partnerTotal)}</span>
                     </div>
                 </div>
 
-                <!-- Partner B -->
+                <!-- Non-Cash-Invested Partner -->
                 <div style="background:rgba(102,187,106,0.08);border:2px solid rgba(102,187,106,0.4);border-radius:8px;padding:14px;">
-                    <div style="font-size:10px;color:var(--green);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">Partner B</div>
+                    <div style="font-size:10px;color:var(--green);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">Non-Cash-Invested Partner</div>
                     <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:3px;">
                         <span>Capital returned</span>
                         <span style="color:var(--text-muted);">$0</span>
@@ -2405,19 +2405,19 @@ function renderClosingSettlement(m, prop) {
                         <span style="color:var(--green);">+${fmt(distrib - partnerShare)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:12px;font-weight:700;color:var(--green);">Their Check</span>
+                        <span style="font-size:12px;font-weight:700;color:var(--green);">Check at Close</span>
                         <span style="font-size:26px;font-weight:800;color:var(--green);">+${fmt(distrib - partnerShare)}</span>
                     </div>
                 </div>
             </div>` : `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 12px;">
                 <div style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);border-radius:6px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner A — ${splitPct}% of profit</div>
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Cash-Invested Partner — ${splitPct}%</div>
                     <div style="font-size:20px;font-weight:700;color:var(--accent);">+${fmt(partnerShare)}</div>
                     <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">+ capital returned at close</div>
                 </div>
                 <div style="background:rgba(102,187,106,0.08);border:1px solid rgba(102,187,106,0.3);border-radius:6px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner B — ${partnerPct}% of profit</div>
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Non-Cash-Invested Partner — ${partnerPct}%</div>
                     <div style="font-size:20px;font-weight:700;color:var(--green);">+${fmt(distBase - partnerShare)}</div>
                     <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">&nbsp;</div>
                 </div>
