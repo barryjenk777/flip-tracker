@@ -2288,7 +2288,7 @@ function renderCashInvested(m, prop) {
                 <span style="color:var(--text-muted)">→</span>
                 <span style="background:rgba(255,167,38,0.2);padding:4px 10px;border-radius:20px;color:var(--yellow);font-weight:700;">Return ${fmt(total)}</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.distributable_profit)} 50/50</span>
+                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.distributable_profit)} ${m.partner_split_pct||50}/${100-(m.partner_split_pct||50)}</span>
                 <span style="color:var(--text-muted)">→</span>
                 <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);font-weight:700;">Your Check: ${fmt(m.partner_total)}</span>
             </div>
@@ -2362,43 +2362,64 @@ function renderClosingSettlement(m, prop) {
 
             ${m.cash_invested > 0 ? `
             <!-- Return of Capital -->
-            <div style="margin:8px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--yellow);letter-spacing:0.5px;">Step 1 — Return Your Capital First</div>
+            <div style="margin:8px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--yellow);letter-spacing:0.5px;">Step 1 — Return Capital First</div>
             <div style="display:flex;justify-content:space-between;padding:10px 12px;background:rgba(255,167,38,0.1);border:1px solid rgba(255,167,38,0.3);border-radius:6px;font-size:14px;font-weight:700;margin-bottom:4px;">
-                <span style="color:var(--yellow);">💰 Return of Capital to You</span>
+                <span style="color:var(--yellow);">💰 Return of Capital (Partner A)</span>
                 <span style="color:var(--yellow);">-${fmt(m.cash_invested)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;padding:10px 12px;background:var(--bg-primary);border-radius:6px;font-size:14px;font-weight:700;margin-bottom:12px;">
-                <span>Distributable Profit</span>
+                <span>Distributable Profit (${splitPct}% / ${partnerPct}% split)</span>
                 <span style="color:${distrib>=0?'var(--green)':'var(--red)'};">${distrib>=0?'+':''}${fmt(distrib)}</span>
             </div>
 
-            <!-- Split -->
-            <div style="margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-secondary);letter-spacing:0.5px;">Step 2 — Split ${splitPct}% / ${partnerPct}%</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-                <div style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);border-radius:6px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Your Share (${splitPct}%)</div>
-                    <div style="font-size:20px;font-weight:700;color:var(--accent);">+${fmt(partnerShare)}</div>
+            <!-- Both partner checks side by side -->
+            <div style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-secondary);letter-spacing:0.5px;">Step 2 — Checks at Closing</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+
+                <!-- Partner A (Barry) -->
+                <div style="background:linear-gradient(135deg,rgba(79,195,247,0.15) 0%,rgba(79,195,247,0.05) 100%);border:2px solid var(--accent);border-radius:8px;padding:14px;">
+                    <div style="font-size:10px;color:var(--accent);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">Partner A (You)</div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:3px;">
+                        <span>Capital returned</span>
+                        <span style="color:var(--yellow);">+${fmt(m.cash_invested)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);padding-bottom:8px;border-bottom:1px solid rgba(79,195,247,0.2);margin-bottom:8px;">
+                        <span>Profit share (${splitPct}%)</span>
+                        <span style="color:var(--green);">+${fmt(partnerShare)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:12px;font-weight:700;color:var(--accent);">Your Check</span>
+                        <span style="font-size:26px;font-weight:800;color:var(--accent);">+${fmt(partnerTotal)}</span>
+                    </div>
                 </div>
-                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner (${partnerPct}%)</div>
-                    <div style="font-size:20px;font-weight:700;color:var(--text-secondary);">+${fmt(distrib - partnerShare)}</div>
+
+                <!-- Partner B -->
+                <div style="background:rgba(102,187,106,0.08);border:2px solid rgba(102,187,106,0.4);border-radius:8px;padding:14px;">
+                    <div style="font-size:10px;color:var(--green);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">Partner B</div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:3px;">
+                        <span>Capital returned</span>
+                        <span style="color:var(--text-muted);">$0</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);padding-bottom:8px;border-bottom:1px solid rgba(102,187,106,0.2);margin-bottom:8px;">
+                        <span>Profit share (${partnerPct}%)</span>
+                        <span style="color:var(--green);">+${fmt(distrib - partnerShare)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:12px;font-weight:700;color:var(--green);">Their Check</span>
+                        <span style="font-size:26px;font-weight:800;color:var(--green);">+${fmt(distrib - partnerShare)}</span>
+                    </div>
                 </div>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:linear-gradient(135deg,rgba(79,195,247,0.15) 0%,rgba(79,195,247,0.05) 100%);border:2px solid var(--accent);border-radius:8px;">
-                <div>
-                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:2px;">Capital ${fmt(m.cash_invested)} + Profit ${fmt(partnerShare)}</div>
-                    <div style="font-size:15px;font-weight:700;color:var(--accent);">Your Total Check at Closing</div>
-                </div>
-                <div style="font-size:32px;font-weight:800;color:var(--accent);">+${fmt(partnerTotal)}</div>
             </div>` : `
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 12px;">
                 <div style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);border-radius:6px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Your Share (${splitPct}%)</div>
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner A — ${splitPct}% of profit</div>
                     <div style="font-size:20px;font-weight:700;color:var(--accent);">+${fmt(partnerShare)}</div>
+                    <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">+ capital returned at close</div>
                 </div>
-                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
-                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner (${partnerPct}%)</div>
-                    <div style="font-size:20px;font-weight:700;color:var(--text-secondary);">+${fmt(distBase - partnerShare)}</div>
+                <div style="background:rgba(102,187,106,0.08);border:1px solid rgba(102,187,106,0.3);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">Partner B — ${partnerPct}% of profit</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--green);">+${fmt(distBase - partnerShare)}</div>
+                    <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">&nbsp;</div>
                 </div>
             </div>
             <div style="font-size:12px;color:var(--text-muted);font-style:italic;">Enter your cash invested above to see your full reimbursement waterfall.</div>`}

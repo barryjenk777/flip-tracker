@@ -493,6 +493,7 @@ def calc_property_metrics(prop):
         'profit_margin': profit_margin, 'partner_split_pct': partner_split_pct,
         'distributable_profit': distributable_profit,
         'partner_share': partner_share, 'partner_total': partner_total,
+        'draw_surplus': draw_surplus,
         'roi': roi, 'annualized_roi': annualized_roi, 'cash_on_cash': cash_on_cash,
         'mao': mao, 'mao_with_holding': mao_with_holding,
         'passes_70_rule': passes_70_rule, 'total_cost_to_arv': total_cost_to_arv,
