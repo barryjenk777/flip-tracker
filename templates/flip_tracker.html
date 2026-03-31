@@ -1654,7 +1654,11 @@ function showEditProperty() {
     $('ep-appraisal').value = prop.appraisal_fee || '';
     $('ep-downpayment').value = prop.down_payment || '';
     $('ep-commitment').value = prop.commitment_fee || '';
-    $('ep-cashinvested').value = prop.cash_invested || '';
+    // Only show a manual cash_invested override in the field.
+    // If purchase_settlement is set, the backend calculates it — show blank so the auto-calc
+    // doesn't get re-saved as a manual value next time the form is submitted.
+    const hasPurchaseSettlement = (prop.purchase_settlement || 0) > 0;
+    $('ep-cashinvested').value = (hasPurchaseSettlement && !prop.cash_invested) ? '' : (prop.cash_invested || '');
     $('ep-budget').value = prop.rehab_budget || '';
     $('ep-lender-budget').value = prop.lender_rehab_budget || '';
     $('ep-purchasedate').value = prop.purchase_date || '';
@@ -1694,7 +1698,16 @@ async function submitEditProperty() {
         appraisal_fee: +$('ep-appraisal').value || 0,
         down_payment: +$('ep-downpayment').value || 0,
         commitment_fee: +$('ep-commitment').value || 0,
-        cash_invested: +$('ep-cashinvested').value || ((+$('ep-emd').value||0) + (+$('ep-appraisal').value||0) + (+$('ep-downpayment').value||0) + (+$('ep-commitment').value||0)),
+        // Only store a manual cash_invested override if the user explicitly typed one.
+        // If purchase_settlement is set, send 0 so the backend calculates from cash_in_deal.
+        // If no settlement, fall back to sub-field sum so pre-settlement deals still work.
+        cash_invested: (() => {
+            const manual = +$('ep-cashinvested').value || 0;
+            if (manual > 0) return manual;
+            const hasSettlement = (+$('ep-settlement').value || 0) > 0;
+            if (hasSettlement) return 0;  // let backend calculate from purchase_settlement
+            return (+$('ep-emd').value||0) + (+$('ep-appraisal').value||0) + (+$('ep-downpayment').value||0) + (+$('ep-commitment').value||0);
+        })(),
         rehab_budget: +$('ep-budget').value || 0,
         lender_rehab_budget: +$('ep-lender-budget').value || 0,
         purchase_date: $('ep-purchasedate').value || null,
