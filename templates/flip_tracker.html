@@ -2250,7 +2250,7 @@ function renderCashInvested(m, prop) {
             <div style="text-align:right;">
                 <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">${fromCD ? '📄 From Closing Disclosure' : 'Total Capital'}</div>
                 <div style="font-size:36px;font-weight:800;color:var(--yellow);">${total > 0 ? fmt(total) : '<span style="color:var(--text-muted);font-size:22px;">Not set</span>'}</div>
-                ${total > 0 ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Your Total at Close: <strong style="color:var(--accent)">${fmt(total + (m.gross_profit - total) * ((prop.partner_split_pct||50)/100))}</strong></div>` : ''}
+                ${total > 0 ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Your Total at Close: <strong style="color:var(--accent)">${fmt(m.partner_total)}</strong></div>` : ''}
             </div>
         </div>
 
@@ -2288,13 +2288,13 @@ function renderCashInvested(m, prop) {
         <div style="background:var(--bg-primary);border-radius:8px;padding:12px;border:1px solid rgba(255,167,38,0.3);">
             <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Reimbursement Flow at Closing</div>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap;">
-                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);">Net Profit ${fmt(m.gross_profit)}</span>
+                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);">${m.net_proceeds_at_close > 0 ? 'CD Proceeds' : 'Net Profit'} ${fmt(m.distribution_base)}</span>
                 <span style="color:var(--text-muted)">→</span>
                 <span style="background:rgba(255,167,38,0.2);padding:4px 10px;border-radius:20px;color:var(--yellow);font-weight:700;">Return ${fmt(total)}</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.gross_profit - total)} 50/50</span>
+                <span style="background:rgba(102,187,106,0.15);padding:4px 10px;border-radius:20px;color:var(--green);">Split ${fmt(m.distributable_profit)} 50/50</span>
                 <span style="color:var(--text-muted)">→</span>
-                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);font-weight:700;">Your Check: ${fmt(total + (m.gross_profit - total) * ((prop.partner_split_pct||50)/100))}</span>
+                <span style="background:rgba(79,195,247,0.15);padding:4px 10px;border-radius:20px;color:var(--accent);font-weight:700;">Your Check: ${fmt(m.partner_total)}</span>
             </div>
         </div>` : ''}
     </div>`;
@@ -3197,9 +3197,16 @@ function renderPropertyPnl(pnl, prop) {
 
         <tr><td style="height:12px" colspan="3"></td></tr>
         <tr><td class="pnl-section" colspan="2">PARTNERSHIP DISTRIBUTION</td><td class="pnl-section"></td></tr>
+        ${pnl.using_cd_proceeds ? `
+        <tr><td class="pnl-sub" colspan="2" style="color:var(--green);font-size:11px;">✅ Using actual sale CD net proceeds — most accurate basis for cash distribution</td><td class="pnl-amount" style="color:var(--green);font-size:11px;">vs. acctg profit ${f(pnl.net_profit)}</td></tr>
+        <tr><td class="pnl-sub">Net Proceeds at Closing (Sale CD cash-to-close)</td><td style="font-size:10px;color:var(--text-muted)">Actual cash received</td><td class="pnl-amount pnl-positive">${f(pnl.net_proceeds_at_close)}</td></tr>
+        ` : `
+        <tr><td class="pnl-sub" colspan="2" style="color:var(--yellow);font-size:11px;">⚠️ No sale CD uploaded — using accounting net profit as distribution base (upload sale CD for exact figures)</td><td></td></tr>
+        <tr><td class="pnl-sub">Distribution Base (Accounting Net Profit)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.distribution_base)}</td></tr>
+        `}
         ${pnl.cash_invested > 0 ? `
-        <tr><td class="pnl-sub">Return of Capital (out-of-pocket cash invested)</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed first</td><td class="pnl-amount pnl-positive">${f(pnl.cash_invested)}</td></tr>
-        <tr><td class="pnl-sub pnl-total">Distributable Profit</td><td></td><td class="pnl-amount pnl-total ${pnl.distributable_profit >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.distributable_profit)}</td></tr>
+        <tr><td class="pnl-sub">Less: Return of Capital (your cash invested)</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed first</td><td class="pnl-amount pnl-negative">-${f(pnl.cash_invested)}</td></tr>
+        <tr><td class="pnl-sub pnl-total">Distributable to Partners</td><td></td><td class="pnl-amount pnl-total ${pnl.distributable_profit >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.distributable_profit)}</td></tr>
         <tr><td style="height:4px" colspan="3"></td></tr>
         <tr><td class="pnl-sub">Partner A — Return of Capital</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed</td><td class="pnl-amount pnl-positive">${f(pnl.cash_invested)}</td></tr>
         <tr><td class="pnl-sub">Partner A — Profit Share (${pnl.partner_split_pct}% of distributable)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_a_share)}</td></tr>

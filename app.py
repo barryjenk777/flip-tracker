@@ -331,8 +331,11 @@ def calc_property_metrics(prop):
     down_payment = prop.get('down_payment', 0) or 0
 
     # Compute cash_in_deal first — needs to happen before cash_invested fallback
+    # When purchase_settlement is the CD cash-to-close, down_payment is already embedded in it.
+    # EMD, commitment, and appraisal are typically paid OUTSIDE/BEFORE closing (not in CD cash-to-close),
+    # so they are added separately. down_payment is NOT added to avoid double-counting.
     if purchase_settlement > 0:
-        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + down_payment + total_rehab + total_holding_cost
+        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost
     else:
         total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost
     draw_surplus = max(total_draws - total_rehab, 0)
@@ -568,10 +571,17 @@ def calc_pnl(prop, metrics):
     se_tax = 0
     net_after_se = net_profit
 
-    # Partnership waterfall: return capital first, then split remainder
+    # Partnership waterfall: return capital first, then split remainder.
+    # Distribution base = actual sale CD net proceeds when available (what was actually
+    # received at the closing table), otherwise fall back to accounting net_profit.
+    # These differ because accounting net_profit deducts the full purchase price including
+    # financed portions, while CD net proceeds are already net of loan payoff.
     split_pct = prop.get('partner_split_pct', 50) / 100
     cash_invested = metrics.get('cash_invested', 0)
-    distributable_profit = net_profit - cash_invested
+    net_proceeds_at_close = metrics.get('net_proceeds_at_close', 0)
+    using_cd_proceeds = net_proceeds_at_close > 0
+    distribution_base = net_proceeds_at_close if using_cd_proceeds else net_profit
+    distributable_profit = distribution_base - cash_invested
     partner_a_share = distributable_profit * split_pct
     partner_b_share = distributable_profit * (1 - split_pct)
     partner_a_total = cash_invested + partner_a_share  # capital return + profit share
@@ -611,6 +621,9 @@ def calc_pnl(prop, metrics):
         'se_tax': se_tax,
         'net_after_se': net_after_se,
         'cash_invested': cash_invested,
+        'net_proceeds_at_close': net_proceeds_at_close,
+        'distribution_base': distribution_base,
+        'using_cd_proceeds': using_cd_proceeds,
         'distributable_profit': distributable_profit,
         'partner_a_share': partner_a_share,
         'partner_b_share': partner_b_share,
