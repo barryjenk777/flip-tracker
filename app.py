@@ -701,13 +701,18 @@ def parse_closing_disclosure(pdf_bytes):
                     break
 
         # Extract cash to close — try multiple patterns
-        # HUD-1 format: "Cash From Borrower $XX,XXX.XX" or "Cash From X To Seller $XX,XXX.XX"
-        # CD format: "Cash to Close $XX,XXX.XX"
+        # CFPB CD format: "Cash to Close $XX,XXX.XX"
+        # HUD-1 format: "Cash From Borrower $XX,XXX.XX" or "303. Cash X From Borrower $XX,XXX.XX"
+        # ALTA Settlement Statement format: "Due From Borrower  5,259.16" (no $ sign, no "at Closing")
+        # Subject-to / cash deals: "Due From Buyer", "Amount Due From Buyer"
         for pattern in [
             r'Cash\s*to\s*Close\s*\$?\s*([\d,]+\.?\d*)',
             r'Cash\s*From\s*(?:X\s*To\s*)?Seller\s*\$?\s*([\d,]+\.?\d*)',
             r'Cash\s*[Ff]rom\s*Borrower\s*\$?\s*([\d,]+\.?\d*)',
-            r'Cash\s*(?:from|to)\s*(?:Borrower|Seller)\s*\$?\s*([\d,]+\.?\d*)',
+            r'Cash\s*(?:from|to)\s*(?:Borrower|Buyer|Seller)\s*\$?\s*([\d,]+\.?\d*)',
+            r'Due\s*[Ff]rom\s*Borrower\s+\$?\s*([\d,]+\.?\d*)',   # ALTA: no "at Closing", no $
+            r'Due\s*[Ff]rom\s*Buyer\s+\$?\s*([\d,]+\.?\d*)',       # ALTA alternate buyer label
+            r'Amount\s*Due\s*[Ff]rom\s*(?:Borrower|Buyer)\s+\$?\s*([\d,]+\.?\d*)',
             r'Due\s*from\s*Borrower\s*at\s*Closing\s*\$?\s*([\d,]+\.?\d*)',
             r'303\.?\s*Cash\s*X?\s*[Ff]rom\s*(?:To\s*)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
             r'TOTAL\s*CLOSING\s*COSTS?\s*\$?\s*([\d,]+\.?\d*)',
