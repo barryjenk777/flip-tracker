@@ -422,11 +422,13 @@ def calc_property_metrics(prop):
     days_until_zero_profit = int(gross_profit / daily_hold) if daily_hold > 0 else 999
 
     # ---- Status ----
+    # 'closed' is set manually via the closeout wizard and must not be overwritten.
     status = prop.get('status', 'active')
-    if sale_date:
-        status = 'sold'
-    elif listing_date:
-        status = 'listed'
+    if status != 'closed':
+        if sale_date:
+            status = 'sold'
+        elif listing_date:
+            status = 'listed'
 
     # ---- Risk flags ----
     flags = []
@@ -1456,6 +1458,46 @@ def delete_flip(prop_id):
     return jsonify({'ok': True})
 
 
+@app.route('/api/flips/<prop_id>/closeout', methods=['POST'])
+@login_required
+def closeout_property(prop_id):
+    """Lock a sold deal as closed, freeze a snapshot of final metrics."""
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+
+    metrics = calc_property_metrics(prop)
+    partner_b_check = metrics['distributable_profit'] - metrics['partner_share']
+
+    prop['status'] = 'closed'
+    prop['closeout_date'] = datetime.now().strftime('%Y-%m-%d')
+    prop['closeout_snapshot'] = {
+        'purchase_price':              prop.get('purchase_price', 0),
+        'sale_price':                  metrics['effective_sale'],
+        'total_rehab':                 metrics['total_rehab'],
+        'rehab_budget':                prop.get('rehab_budget', 0),
+        'total_costs':                 metrics['total_costs'],
+        'gross_profit':                metrics['gross_profit'],
+        'cash_invested':               metrics['cash_invested'],
+        'cash_in_deal':                metrics['cash_in_deal'],
+        'total_draws':                 metrics['total_draws'],
+        'distribution_base':           metrics['distribution_base'],
+        'net_proceeds_at_close':       metrics['net_proceeds_at_close'],
+        'distributable_profit':        metrics['distributable_profit'],
+        'cash_invested_partner_check': metrics['partner_total'],
+        'non_cash_partner_check':      round(partner_b_check, 2),
+        'partner_split_pct':           prop.get('partner_split_pct', 50),
+        'roi':                         round(metrics['roi'], 2),
+        'days_held':                   metrics['days_held'],
+        'purchase_date':               prop.get('purchase_date', ''),
+        'closeout_date':               datetime.now().strftime('%Y-%m-%d'),
+    }
+
+    save_data(data)
+    return jsonify({'success': True, 'snapshot': prop['closeout_snapshot']})
+
+
 @app.route('/api/flips/settings', methods=['GET'])
 def get_flip_settings():
     data = load_data()
@@ -1901,6 +1943,69 @@ def export_csv():
         output.getvalue(),
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename=flip-tracker-backup-{datetime.now().strftime("%Y%m%d")}.csv'}
+    )
+
+
+@app.route('/api/export/lender-csv')
+@login_required
+def export_lender_csv():
+    """Export closed deals as a lender-ready track record CSV."""
+    data = load_data()
+    closed = [p for p in data['properties'] if p.get('status') == 'closed' and p.get('closeout_snapshot')]
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(['INVESTMENT TRACK RECORD'])
+    writer.writerow(['Generated', datetime.now().strftime('%Y-%m-%d')])
+    writer.writerow([])
+    writer.writerow(['Address', 'City', 'State', 'Purchase Date', 'Close Date', 'Days Held',
+                     'Purchase Price', 'Sale Price', 'Total Rehab', 'Rehab Budget', 'Budget Variance %',
+                     'Total Costs', 'Net Profit', 'ROI %', 'Capital Invested',
+                     'Cash-Invested Partner Check', 'Non-Cash-Invested Partner Check', 'MOIC'])
+
+    totals = {'profit': 0, 'capital': 0, 'cash_inv_check': 0, 'non_cash_check': 0, 'roi_sum': 0}
+    for p in closed:
+        snap = p.get('closeout_snapshot', {})
+        budget = snap.get('rehab_budget', 0)
+        actual = snap.get('total_rehab', 0)
+        bvar = round((actual - budget) / budget * 100, 1) if budget > 0 else ''
+        capital = snap.get('cash_invested', 0)
+        ci_check = snap.get('cash_invested_partner_check', 0)
+        moic = round(ci_check / capital, 2) if capital > 0 else ''
+        writer.writerow([
+            p.get('address', ''), p.get('city', ''), p.get('state', ''),
+            snap.get('purchase_date', ''), snap.get('closeout_date', ''), snap.get('days_held', ''),
+            snap.get('purchase_price', 0), snap.get('sale_price', 0),
+            actual, budget, bvar,
+            snap.get('total_costs', 0), snap.get('gross_profit', 0), snap.get('roi', 0),
+            capital, ci_check, snap.get('non_cash_partner_check', 0), moic,
+        ])
+        totals['profit']        += snap.get('gross_profit', 0)
+        totals['capital']       += capital
+        totals['cash_inv_check'] += ci_check
+        totals['non_cash_check'] += snap.get('non_cash_partner_check', 0)
+        totals['roi_sum']       += snap.get('roi', 0)
+
+    avg_roi  = round(totals['roi_sum'] / len(closed), 1) if closed else 0
+    moic_avg = round(totals['cash_inv_check'] / totals['capital'], 2) if totals['capital'] > 0 else ''
+    writer.writerow([])
+    writer.writerow(['TOTALS', '', '', '', '', '',
+                     '', '', '', '', '',
+                     '', totals['profit'], f'{avg_roi}% avg',
+                     totals['capital'], totals['cash_inv_check'], totals['non_cash_check'], f'{moic_avg}x avg'])
+    writer.writerow([])
+    writer.writerow(['SUMMARY STATS'])
+    writer.writerow(['Total Deals Closed', len(closed)])
+    writer.writerow(['Total Net Profit',   totals['profit']])
+    writer.writerow(['Total Capital Deployed', totals['capital']])
+    writer.writerow(['Average ROI %', avg_roi])
+    writer.writerow(['Average MOIC',  moic_avg])
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=lender-track-record-{datetime.now().strftime("%Y%m%d")}.csv'}
     )
 
 

@@ -423,6 +423,7 @@
         .status-badge.listed { background: var(--purple-dim); color: var(--purple); }
         .status-badge.sold { background: var(--green-dim); color: var(--green); }
         .status-badge.active { background: var(--accent-dim); color: var(--accent); }
+        .status-badge.closed { background: rgba(171,71,188,0.15); color: var(--purple); }
 
         /* ---- Two-column layout ---- */
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -937,6 +938,7 @@
         <!-- Tab Bar -->
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('portfolio')">Portfolio Overview</button>
+            <button class="tab-btn" onclick="switchTab('completed')">Completed Deals</button>
             <button class="tab-btn" onclick="switchTab('summary')">2026 Summary</button>
             <button class="tab-btn" onclick="switchTab('property')">Property Detail</button>
             <button class="tab-btn" onclick="switchTab('expenses')">Expenses & Draws</button>
@@ -963,6 +965,11 @@
             </div>
         </div>
 
+        <!-- ===== COMPLETED DEALS TAB ===== -->
+        <div class="tab-content" id="tab-completed">
+            <div id="completed-deals-content"></div>
+        </div>
+
         <!-- ===== 2026 SUMMARY TAB ===== -->
         <div class="tab-content" id="tab-summary">
             <div id="summary-content"></div>
@@ -974,6 +981,9 @@
                 <div id="property-selector"></div>
                 <button class="btn btn-secondary" onclick="showEditProperty()">Edit Property</button>
             </div>
+
+            <!-- Closeout / locked banner -->
+            <div id="closeout-banner"></div>
 
             <!-- Key Metrics -->
             <div class="stat-grid" id="property-stats"></div>
@@ -1515,6 +1525,71 @@
         </div>
     </div>
 
+    <!-- ===== CLOSEOUT WIZARD MODAL ===== -->
+    <div class="modal-overlay" id="modal-closeout">
+        <div class="modal" style="max-width:600px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <h2 style="margin:0;">Close Out Deal</h2>
+                <span id="closeout-step-label" style="font-size:13px;color:var(--text-muted);">Step 1 of 3</span>
+            </div>
+            <div style="height:4px;background:var(--border);border-radius:2px;margin-bottom:22px;">
+                <div id="closeout-progress" style="height:100%;border-radius:2px;background:var(--accent);transition:width 0.3s;width:33%;"></div>
+            </div>
+
+            <!-- Step 1: Final Expenses -->
+            <div id="closeout-step-1">
+                <div style="font-size:16px;font-weight:700;margin-bottom:6px;">Final Expense Review</div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Add any last-minute costs before locking the books — touch-up labor, final utilities, title corrections, etc.</div>
+                <div id="closeout-recent-expenses" style="margin-bottom:10px;"></div>
+                <button class="btn btn-secondary" style="width:100%;" onclick="hideModal('modal-closeout');toggleQuickExpense();">+ Add Last-Minute Expense</button>
+                <div class="modal-actions" style="margin-top:20px;">
+                    <button class="btn btn-secondary" onclick="hideModal('modal-closeout')">Save &amp; Exit</button>
+                    <button class="btn btn-primary" onclick="closeoutGoToStep(2)">Continue →</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Sale CD -->
+            <div id="closeout-step-2" style="display:none;">
+                <div style="font-size:16px;font-weight:700;margin-bottom:6px;">Sale Closing Disclosure</div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">The sale CD locks in actual net proceeds — the most accurate distribution base possible.</div>
+                <div id="closeout-cd-status"></div>
+                <div class="modal-actions" style="margin-top:20px;">
+                    <button class="btn btn-secondary" onclick="closeoutGoToStep(1)">← Back</button>
+                    <button class="btn btn-primary" onclick="closeoutGoToStep(3)">Continue →</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Payout sign-off -->
+            <div id="closeout-step-3" style="display:none;">
+                <div style="font-size:16px;font-weight:700;margin-bottom:6px;">Final Payout Sign-Off</div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Both parties should review these numbers before the books are locked permanently.</div>
+                <div id="closeout-payout-summary"></div>
+                <div style="margin-top:14px;padding:12px 14px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+                        <input type="checkbox" id="closeout-confirm-check" onchange="document.getElementById('closeout-confirm-btn').disabled=!this.checked" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green);">
+                        Both parties have reviewed and confirmed these numbers.
+                    </label>
+                </div>
+                <div class="modal-actions" style="margin-top:20px;">
+                    <button class="btn btn-secondary" onclick="closeoutGoToStep(2)">← Back</button>
+                    <button class="btn btn-primary" id="closeout-confirm-btn" disabled onclick="submitCloseout()" style="background:var(--green);border-color:var(--green);">Lock &amp; Archive Deal ✓</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Done -->
+            <div id="closeout-step-4" style="display:none;text-align:center;padding:16px 0 8px;">
+                <div style="font-size:48px;margin-bottom:12px;">🎉</div>
+                <div style="font-size:22px;font-weight:800;color:var(--green);margin-bottom:6px;">Deal Closed!</div>
+                <div id="closeout-done-address" style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;"></div>
+                <div id="closeout-done-summary" style="margin-bottom:24px;"></div>
+                <div class="modal-actions" style="justify-content:center;gap:12px;">
+                    <button class="btn btn-secondary" onclick="hideModal('modal-closeout');renderAll();">Close</button>
+                    <button class="btn btn-primary" onclick="hideModal('modal-closeout');switchTab('completed');renderAll();">View in Completed Deals →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Quick Expense FAB -->
     <button class="fab" onclick="toggleQuickExpense()" title="Quick Add Expense">+</button>
     <div class="fab-label">Quick Expense</div>
@@ -1610,7 +1685,7 @@ async function apiPost(url, body) {
 
 // ---- Tab switching ----
 function switchTab(name) {
-    const tabMap = { portfolio: 'Portfolio Overview', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', tax: 'Tax & P&L', prospects: 'Deal Analyzer', command: 'Command Center' };
+    const tabMap = { portfolio: 'Portfolio Overview', completed: 'Completed Deals', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', tax: 'Tax & P&L', prospects: 'Deal Analyzer', command: 'Command Center' };
     const target = tabMap[name] || '';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent === target));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === 'tab-'+name));
@@ -1935,6 +2010,7 @@ function renderPropertySelector(containerId) {
 // ---- Render ----
 function renderAll() {
     renderPortfolio();
+    renderCompletedDeals();
     renderSummary2026();
     renderPropertySelector('property-selector');
     renderPropertySelector('expense-selector');
@@ -1946,6 +2022,221 @@ function renderAll() {
     renderTaxPnl();
 }
 
+/* ── Closeout Wizard ──────────────────────────────────────────────── */
+let closeoutPropertyId = null;
+
+function showCloseoutWizard(propId) {
+    closeoutPropertyId = propId;
+    closeoutGoToStep(1);
+    showModal('modal-closeout');
+}
+
+function closeoutGoToStep(step) {
+    [1,2,3,4].forEach(s => {
+        const el = document.getElementById('closeout-step-' + s);
+        if (el) el.style.display = s === step ? '' : 'none';
+    });
+    const labels = ['Step 1 of 3','Step 2 of 3','Step 3 of 3','Complete'];
+    const widths  = ['33%','66%','100%','100%'];
+    const labelEl = document.getElementById('closeout-step-label');
+    const progEl  = document.getElementById('closeout-progress');
+    if (labelEl) labelEl.textContent = labels[step - 1] || '';
+    if (progEl)  progEl.style.width  = widths[step - 1] || '33%';
+
+    const prop = flipData.properties.find(p => p.id === closeoutPropertyId);
+    if (!prop) return;
+    const m = prop.metrics;
+
+    if (step === 1) {
+        const recent = (prop.expenses || []).slice(-6).reverse();
+        document.getElementById('closeout-recent-expenses').innerHTML = recent.length ? `
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Most Recent Expenses</div>
+            ${recent.map(e => `
+                <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--bg-primary);border-radius:6px;margin-bottom:4px;font-size:13px;">
+                    <span style="color:var(--text-secondary);">${e.date || ''} &nbsp;·&nbsp; ${e.vendor || e.description || ''}</span>
+                    <span style="color:var(--yellow);">-${fmt(e.amount)}</span>
+                </div>`).join('')}
+        ` : `<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;background:var(--bg-primary);border-radius:6px;">No expenses on record yet.</div>`;
+    }
+
+    if (step === 2) {
+        const hasCD = (m.net_proceeds_at_close || 0) > 0;
+        document.getElementById('closeout-cd-status').innerHTML = hasCD ? `
+            <div style="background:rgba(102,187,106,0.1);border:1px solid rgba(102,187,106,0.3);border-radius:8px;padding:16px;">
+                <div style="font-size:14px;font-weight:700;color:var(--green);margin-bottom:4px;">✅ Sale CD on file</div>
+                <div style="font-size:13px;color:var(--text-secondary);">Net Proceeds locked at <strong style="color:var(--green)">${fmt(m.net_proceeds_at_close)}</strong> — most accurate distribution base.</div>
+            </div>` : `
+            <div style="background:rgba(255,167,38,0.1);border:1px solid rgba(255,167,38,0.4);border-radius:8px;padding:16px;margin-bottom:12px;">
+                <div style="font-size:14px;font-weight:700;color:var(--yellow);margin-bottom:4px;">⚠️ No sale CD on file</div>
+                <div style="font-size:13px;color:var(--text-secondary);">Payout will be based on estimated accounting profit (${fmt(m.gross_profit)}). Upload your sale CD on the Tax &amp; P&amp;L tab for exact figures.</div>
+            </div>
+            <button class="btn btn-secondary" onclick="hideModal('modal-closeout');switchTab('tax');renderAll();">Go to Tax &amp; P&amp;L to Upload →</button>`;
+    }
+
+    if (step === 3) {
+        const splitPct   = m.partner_split_pct || 50;
+        const partnerB   = (m.distributable_profit || 0) - (m.partner_share || 0);
+        document.getElementById('closeout-payout-summary').innerHTML = `
+            <div style="background:var(--bg-primary);border-radius:8px;padding:14px 16px;margin-bottom:4px;">
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;">
+                    <span style="color:var(--text-secondary);">${m.net_proceeds_at_close > 0 ? 'Sale CD Net Proceeds' : 'Est. Net Profit'}</span>
+                    <span style="color:var(--accent);font-weight:600;">${fmt(m.distribution_base || m.gross_profit)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;">
+                    <span style="color:var(--text-secondary);">Capital Returned</span>
+                    <span style="color:var(--yellow);font-weight:600;">-${fmt(m.cash_invested || 0)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                    <span style="color:var(--text-secondary);">Distributable Profit (${splitPct}% / ${100-splitPct}% split)</span>
+                    <span style="color:var(--green);font-weight:600;">${fmt(m.distributable_profit || 0)}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div style="background:rgba(79,195,247,0.08);border:2px solid rgba(79,195,247,0.3);border-radius:8px;padding:14px;text-align:center;">
+                        <div style="font-size:10px;color:var(--accent);text-transform:uppercase;font-weight:700;margin-bottom:6px;">Cash-Invested Partner</div>
+                        <div style="font-size:24px;font-weight:800;color:var(--accent);">+${fmt(m.partner_total || 0)}</div>
+                    </div>
+                    <div style="background:rgba(102,187,106,0.08);border:2px solid rgba(102,187,106,0.3);border-radius:8px;padding:14px;text-align:center;">
+                        <div style="font-size:10px;color:var(--green);text-transform:uppercase;font-weight:700;margin-bottom:6px;">Non-Cash-Invested Partner</div>
+                        <div style="font-size:24px;font-weight:800;color:var(--green);">+${fmt(partnerB)}</div>
+                    </div>
+                </div>
+            </div>`;
+        const cb  = document.getElementById('closeout-confirm-check');
+        const btn = document.getElementById('closeout-confirm-btn');
+        if (cb)  cb.checked  = false;
+        if (btn) btn.disabled = true;
+    }
+}
+
+async function submitCloseout() {
+    if (!closeoutPropertyId) return;
+    const res = await apiFetch(`/api/flips/${closeoutPropertyId}/closeout`, { method: 'POST' });
+    if (!res || !res.ok) { showToast('❌ Closeout failed — try again'); return; }
+    await loadFlips();
+
+    const prop = flipData.properties.find(p => p.id === closeoutPropertyId);
+    const snap = prop && prop.closeout_snapshot;
+    document.getElementById('closeout-done-address').textContent = prop ? `${prop.address}, ${prop.city}` : '';
+    document.getElementById('closeout-done-summary').innerHTML = snap ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:420px;margin:0 auto;">
+            <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Net Profit</div>
+                <div style="font-size:20px;font-weight:700;color:var(--green);">${fmt(snap.gross_profit)}</div>
+            </div>
+            <div style="background:var(--bg-primary);border-radius:8px;padding:12px;text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">ROI</div>
+                <div style="font-size:20px;font-weight:700;color:var(--accent);">${snap.roi}%</div>
+            </div>
+            <div style="background:rgba(79,195,247,0.08);border:1px solid rgba(79,195,247,0.2);border-radius:8px;padding:12px;text-align:center;">
+                <div style="font-size:10px;color:var(--accent);text-transform:uppercase;margin-bottom:4px;">Cash-Invested Check</div>
+                <div style="font-size:20px;font-weight:700;color:var(--accent);">${fmt(snap.cash_invested_partner_check)}</div>
+            </div>
+            <div style="background:rgba(102,187,106,0.08);border:1px solid rgba(102,187,106,0.2);border-radius:8px;padding:12px;text-align:center;">
+                <div style="font-size:10px;color:var(--green);text-transform:uppercase;margin-bottom:4px;">Non-Cash Check</div>
+                <div style="font-size:20px;font-weight:700;color:var(--green);">${fmt(snap.non_cash_partner_check)}</div>
+            </div>
+        </div>` : '';
+    closeoutGoToStep(4);
+}
+
+/* ── Completed Deals (Lender Portfolio) ──────────────────────────── */
+function renderCompletedDeals() {
+    const el = document.getElementById('completed-deals-content');
+    if (!el) return;
+    const closed = (flipData.properties || []).filter(p => p.status === 'closed' && p.closeout_snapshot);
+
+    if (!closed.length) {
+        el.innerHTML = `
+        <div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+            <div style="font-size:48px;margin-bottom:14px;">📋</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">No completed deals yet</div>
+            <div style="font-size:13px;max-width:380px;margin:0 auto;">When you run the closeout checklist on a sold property, it will appear here as a locked record — ready to share with lenders.</div>
+        </div>`;
+        return;
+    }
+
+    const snaps      = closed.map(p => p.closeout_snapshot);
+    const totalProfit   = snaps.reduce((s,n) => s + (n.gross_profit||0), 0);
+    const totalCapital  = snaps.reduce((s,n) => s + (n.cash_invested||0), 0);
+    const totalCICheck  = snaps.reduce((s,n) => s + (n.cash_invested_partner_check||0), 0);
+    const totalNCCheck  = snaps.reduce((s,n) => s + (n.non_cash_partner_check||0), 0);
+    const avgROI        = snaps.reduce((s,n) => s + (n.roi||0), 0) / snaps.length;
+    const avgDays       = Math.round(snaps.reduce((s,n) => s + (n.days_held||0), 0) / snaps.length);
+    const moic          = totalCapital > 0 ? (totalCICheck / totalCapital).toFixed(2) : '—';
+
+    el.innerHTML = `
+    <div style="background:rgba(79,195,247,0.05);border:1px solid rgba(79,195,247,0.2);border-radius:8px;padding:12px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+            <div style="font-size:13px;font-weight:700;color:var(--accent);">Investment Track Record</div>
+            <div style="font-size:12px;color:var(--text-muted);">Locked figures from closeout — suitable for lender review.</div>
+        </div>
+        <button class="btn btn-secondary" onclick="window.location='/api/export/lender-csv'" style="font-size:12px;">⬇ Export Lender Package CSV</button>
+    </div>
+
+    <div class="stat-grid" style="margin-bottom:20px;">
+        <div class="stat-card highlight"><div class="stat-label">Deals Closed</div><div class="stat-value">${closed.length}</div></div>
+        <div class="stat-card green"><div class="stat-label">Total Profit</div><div class="stat-value">${fmt(totalProfit)}</div></div>
+        <div class="stat-card"><div class="stat-label">Capital Deployed</div><div class="stat-value">${fmt(totalCapital)}</div></div>
+        <div class="stat-card ${avgROI >= 20 ? 'green' : avgROI >= 10 ? 'yellow' : 'red'}"><div class="stat-label">Avg ROI</div><div class="stat-value">${pct(avgROI)}</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Days Held</div><div class="stat-value">${avgDays}</div></div>
+        <div class="stat-card highlight"><div class="stat-label">Avg MOIC</div><div class="stat-value">${moic}x</div></div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Completed Deal History</div>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+            <tr style="border-bottom:2px solid var(--border);color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">
+                <th style="text-align:left;padding:8px 10px;">Property</th>
+                <th style="text-align:right;padding:8px 10px;">Purchased</th>
+                <th style="text-align:right;padding:8px 10px;">Closed</th>
+                <th style="text-align:right;padding:8px 10px;">Days</th>
+                <th style="text-align:right;padding:8px 10px;">Buy</th>
+                <th style="text-align:right;padding:8px 10px;">Sale</th>
+                <th style="text-align:right;padding:8px 10px;">Rehab</th>
+                <th style="text-align:right;padding:8px 10px;">Net Profit</th>
+                <th style="text-align:right;padding:8px 10px;">ROI</th>
+                <th style="text-align:right;padding:8px 10px;">Capital In</th>
+                <th style="text-align:right;padding:8px 10px;">Cash-Inv. Check</th>
+                <th style="text-align:right;padding:8px 10px;">Non-Cash Check</th>
+            </tr>
+            </thead>
+            <tbody>
+            ${closed.map(p => {
+                const s = p.closeout_snapshot;
+                const rc = (s.roi||0) >= 20 ? 'var(--green)' : (s.roi||0) >= 10 ? 'var(--yellow)' : 'var(--red)';
+                return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="selectedPropertyId='${p.id}';switchTab('property');renderAll();" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background=''">
+                    <td style="padding:10px;font-weight:600;">${p.address}<div style="font-size:11px;color:var(--text-muted);font-weight:400;">${p.city}, ${p.state}</div></td>
+                    <td style="padding:10px;text-align:right;color:var(--text-secondary);">${s.purchase_date||'—'}</td>
+                    <td style="padding:10px;text-align:right;color:var(--text-secondary);">${s.closeout_date||'—'}</td>
+                    <td style="padding:10px;text-align:right;">${s.days_held||'—'}</td>
+                    <td style="padding:10px;text-align:right;">${fmt(s.purchase_price||0)}</td>
+                    <td style="padding:10px;text-align:right;">${fmt(s.sale_price||0)}</td>
+                    <td style="padding:10px;text-align:right;">${fmt(s.total_rehab||0)}</td>
+                    <td style="padding:10px;text-align:right;font-weight:700;color:${(s.gross_profit||0)>=0?'var(--green)':'var(--red)'};">${fmt(s.gross_profit||0)}</td>
+                    <td style="padding:10px;text-align:right;font-weight:700;color:${rc};">${s.roi||0}%</td>
+                    <td style="padding:10px;text-align:right;">${fmt(s.cash_invested||0)}</td>
+                    <td style="padding:10px;text-align:right;font-weight:700;color:var(--accent);">${fmt(s.cash_invested_partner_check||0)}</td>
+                    <td style="padding:10px;text-align:right;font-weight:700;color:var(--green);">${fmt(s.non_cash_partner_check||0)}</td>
+                </tr>`;
+            }).join('')}
+            </tbody>
+            <tfoot>
+            <tr style="border-top:2px solid var(--border);font-weight:700;">
+                <td style="padding:10px;" colspan="7">TOTALS</td>
+                <td style="padding:10px;text-align:right;color:var(--green);">${fmt(totalProfit)}</td>
+                <td style="padding:10px;text-align:right;">${pct(avgROI)} avg</td>
+                <td style="padding:10px;text-align:right;">${fmt(totalCapital)}</td>
+                <td style="padding:10px;text-align:right;color:var(--accent);">${fmt(totalCICheck)}</td>
+                <td style="padding:10px;text-align:right;color:var(--green);">${fmt(totalNCCheck)}</td>
+            </tr>
+            </tfoot>
+        </table>
+        </div>
+    </div>`;
+}
+
 // ---- PORTFOLIO TAB ----
 function renderPortfolio() {
     const props = flipData.properties;
@@ -1954,12 +2245,13 @@ function renderPortfolio() {
     const totalInvested = allMetrics.reduce((s,m) => s + m.cash_in_deal, 0);
     const totalProfit = allMetrics.reduce((s,m) => s + m.gross_profit, 0);
     const totalRehab = allMetrics.reduce((s,m) => s + m.total_rehab, 0);
-    const active = allMetrics.filter(m => m.status !== 'sold').length;
+    const active = allMetrics.filter(m => m.status === 'active' || m.status === 'listed' || m.status === 'renovation').length;
     const sold = allMetrics.filter(m => m.status === 'sold').length;
+    const closed = allMetrics.filter(m => m.status === 'closed').length;
     const avgROI = totalInvested > 0 ? (totalProfit / totalInvested * 100) : 0;
 
     $('portfolio-stats').innerHTML = `
-        <div class="stat-card highlight"><div class="stat-label">Properties</div><div class="stat-value">${props.length}</div><div class="stat-sub">${active} active, ${sold} sold</div></div>
+        <div class="stat-card highlight"><div class="stat-label">Properties</div><div class="stat-value">${props.length}</div><div class="stat-sub">${active} active · ${sold} sold · ${closed} closed</div></div>
         <div class="stat-card ${totalProfit >= 0 ? 'green' : 'red'}"><div class="stat-label">Est. Total Profit</div><div class="stat-value">${fmt(totalProfit)}</div></div>
         <div class="stat-card"><div class="stat-label">Cash Invested</div><div class="stat-value">${fmt(totalInvested)}</div></div>
         <div class="stat-card"><div class="stat-label">Total Rehab</div><div class="stat-value">${fmt(totalRehab)}</div></div>
@@ -2172,6 +2464,32 @@ function renderPropertyDetail() {
     const prop = getSelected();
     if (!prop) return;
     const m = prop.metrics;
+
+    // Closeout banner — shown when sold (prompt to close) or already closed (locked notice)
+    const bannerEl = document.getElementById('closeout-banner');
+    if (bannerEl) {
+        if (m.status === 'sold') {
+            bannerEl.innerHTML = `
+            <div style="background:rgba(255,167,38,0.1);border:1px solid rgba(255,167,38,0.4);border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:var(--yellow);">This deal is sold but the books aren't locked yet.</div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">Run the closeout checklist to reconcile final expenses, confirm payout numbers, and archive this deal.</div>
+                </div>
+                <button class="btn btn-primary" style="white-space:nowrap;" onclick="showCloseoutWizard('${prop.id}')">Begin Closeout →</button>
+            </div>`;
+        } else if (m.status === 'closed') {
+            bannerEl.innerHTML = `
+            <div style="background:rgba(171,71,188,0.1);border:1px solid rgba(171,71,188,0.4);border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:var(--purple);">✅ Books locked — closed ${prop.closeout_date || ''}</div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">Final numbers are frozen. This deal lives in your Completed Deals portfolio.</div>
+                </div>
+                <button class="btn btn-secondary" style="white-space:nowrap;" onclick="switchTab('completed');renderAll()">View in Portfolio →</button>
+            </div>`;
+        } else {
+            bannerEl.innerHTML = '';
+        }
+    }
 
     // Stats
     $('property-stats').innerHTML = `
