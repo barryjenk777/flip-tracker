@@ -1520,6 +1520,7 @@
             <div class="modal-actions">
                 <button class="btn btn-danger" onclick="deleteProperty()" style="margin-right:auto;">Delete Property</button>
                 <button class="btn btn-secondary" onclick="hideModal('modal-edit-property')">Cancel</button>
+                <button class="btn btn-secondary" id="ep-closeout-btn" onclick="hideModal('modal-edit-property');showCloseoutWizard(getSelected().id)" style="display:none;border-color:var(--yellow);color:var(--yellow);">Close Out Deal →</button>
                 <button class="btn btn-primary" onclick="submitEditProperty()">Save Changes</button>
             </div>
         </div>
@@ -1752,6 +1753,12 @@ function showEditProperty() {
     $('ep-split').value = prop.partner_split_pct || 50;
     $('ep-contingency').value = prop.contingency_pct || 15;
     $('ep-notes').value = prop.notes || '';
+    // Show closeout button if property has a sale date and isn't already closed
+    const closeoutBtn = $('ep-closeout-btn');
+    if (closeoutBtn) {
+        const isSold = prop.sale_date && prop.status !== 'closed';
+        closeoutBtn.style.display = isSold ? '' : 'none';
+    }
     showModal('modal-edit-property');
 }
 
@@ -2468,7 +2475,7 @@ function renderPropertyDetail() {
     // Closeout banner — shown when sold (prompt to close) or already closed (locked notice)
     const bannerEl = document.getElementById('closeout-banner');
     if (bannerEl) {
-        if (m.status === 'sold') {
+        if (m.status === 'sold' || (prop.sale_date && m.status !== 'closed')) {
             bannerEl.innerHTML = `
             <div style="background:rgba(255,167,38,0.1);border:1px solid rgba(255,167,38,0.4);border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
                 <div>
