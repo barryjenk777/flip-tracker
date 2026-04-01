@@ -2029,6 +2029,22 @@ function renderAll() {
     renderTaxPnl();
 }
 
+/* ── Quick Stage Advance ──────────────────────────────────────────── */
+async function quickSetDate(propId, dateField, label) {
+    const today = new Date().toISOString().split('T')[0];
+    const entered = prompt(`Date for "${label}" stage:`, today);
+    if (!entered) return;
+    const res = await apiFetch(`/api/flips/${propId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [dateField]: entered })
+    });
+    if (res && res.ok) {
+        await loadFlips();
+        showToast(`✅ Marked as ${label} — ${entered}`);
+    }
+}
+
 /* ── Closeout Wizard ──────────────────────────────────────────────── */
 let closeoutPropertyId = null;
 
@@ -2472,30 +2488,53 @@ function renderPropertyDetail() {
     if (!prop) return;
     const m = prop.metrics;
 
-    // Closeout banner — shown when sold (prompt to close) or already closed (locked notice)
+    // Visual status stepper — always visible, shows current stage and one-click next action
     const bannerEl = document.getElementById('closeout-banner');
     if (bannerEl) {
-        if (m.status === 'sold' || (prop.sale_date && m.status !== 'closed')) {
-            bannerEl.innerHTML = `
-            <div style="background:rgba(255,167,38,0.1);border:1px solid rgba(255,167,38,0.4);border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
-                <div>
-                    <div style="font-size:13px;font-weight:700;color:var(--yellow);">This deal is sold but the books aren't locked yet.</div>
-                    <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">Run the closeout checklist to reconcile final expenses, confirm payout numbers, and archive this deal.</div>
+        const st = m.status;
+        const stages = [
+            { id: 'active',  label: 'Active',  icon: '🔨', date: prop.purchase_date,  dateField: 'purchase_date', color: 'var(--accent)'  },
+            { id: 'listed',  label: 'Listed',  icon: '🏷️', date: prop.listing_date,   dateField: 'listing_date',  color: 'var(--purple)'  },
+            { id: 'sold',    label: 'Sold',    icon: '🤝', date: prop.sale_date,      dateField: 'sale_date',     color: 'var(--yellow)'  },
+            { id: 'closed',  label: 'Closed',  icon: '✅', date: prop.closeout_date,  dateField: null,            color: 'var(--green)'   },
+        ];
+        const order  = ['active','listed','sold','closed'];
+        const curIdx = Math.max(order.indexOf(st), 0);
+
+        const stageHTML = stages.map((s, i) => {
+            const done    = i < curIdx;
+            const current = i === curIdx;
+            const next    = i === curIdx + 1;
+            const lineColor = done ? s.color : 'var(--border)';
+            let actionHTML = '';
+            if (next && s.id !== 'closed') {
+                actionHTML = `<button onclick="quickSetDate('${prop.id}','${s.dateField}','${s.label}')"
+                    style="margin-top:8px;font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid ${s.color};color:${s.color};background:transparent;cursor:pointer;font-weight:700;white-space:nowrap;">
+                    Mark ${s.label} →</button>`;
+            } else if (next && s.id === 'closed') {
+                actionHTML = `<button onclick="showCloseoutWizard('${prop.id}')"
+                    style="margin-top:8px;font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--green);color:var(--green);background:rgba(102,187,106,0.1);cursor:pointer;font-weight:700;white-space:nowrap;">
+                    Close Out →</button>`;
+            }
+            return `
+            <div style="display:flex;flex-direction:column;align-items:center;flex:1;position:relative;z-index:1;">
+                ${i < stages.length - 1 ? `<div style="position:absolute;top:17px;left:calc(50% + 18px);right:calc(-50% + 18px);height:2px;background:${lineColor};z-index:0;"></div>` : ''}
+                <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;position:relative;z-index:1;
+                    border:2px solid ${(done || current) ? s.color : 'var(--border)'};
+                    background:${current ? s.color+'22' : done ? s.color+'11' : 'var(--bg-primary)'};">
+                    ${done ? '✓' : s.icon}
                 </div>
-                <button class="btn btn-primary" style="white-space:nowrap;" onclick="showCloseoutWizard('${prop.id}')">Begin Closeout →</button>
+                <div style="font-size:11px;font-weight:700;margin-top:6px;text-transform:uppercase;letter-spacing:0.4px;color:${(done || current) ? s.color : 'var(--text-muted)'};">${s.label}</div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${s.date || (current ? 'Now' : '')}</div>
+                ${actionHTML}
             </div>`;
-        } else if (m.status === 'closed') {
-            bannerEl.innerHTML = `
-            <div style="background:rgba(171,71,188,0.1);border:1px solid rgba(171,71,188,0.4);border-radius:8px;padding:14px 18px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
-                <div>
-                    <div style="font-size:13px;font-weight:700;color:var(--purple);">✅ Books locked — closed ${prop.closeout_date || ''}</div>
-                    <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">Final numbers are frozen. This deal lives in your Completed Deals portfolio.</div>
-                </div>
-                <button class="btn btn-secondary" style="white-space:nowrap;" onclick="switchTab('completed');renderAll()">View in Portfolio →</button>
-            </div>`;
-        } else {
-            bannerEl.innerHTML = '';
-        }
+        }).join('');
+
+        bannerEl.innerHTML = `
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:18px 24px;margin-bottom:20px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:18px;">Deal Stage</div>
+            <div style="display:flex;align-items:flex-start;position:relative;">${stageHTML}</div>
+        </div>`;
     }
 
     // Stats
