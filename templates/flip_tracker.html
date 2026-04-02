@@ -1534,9 +1534,10 @@
             <!-- Step 1: Final Expenses -->
             <div id="closeout-step-1">
                 <div style="font-size:16px;font-weight:700;margin-bottom:6px;">Final Expense Review</div>
-                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Add any last-minute costs before locking the books — touch-up labor, final utilities, title corrections, etc.</div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">Review your most recent expenses below. Ask yourself: <strong style="color:var(--text-primary);">is anything missing?</strong> Touch-up labor, final utility bills, title corrections, and warranty items are commonly forgotten at closing.</div>
+                <div style="font-size:12px;color:var(--yellow);margin-bottom:16px;">⚠️ Once you lock the deal, numbers are frozen — add anything outstanding now.</div>
                 <div id="closeout-recent-expenses" style="margin-bottom:10px;"></div>
-                <button class="btn btn-secondary" style="width:100%;" onclick="hideModal('modal-closeout');toggleQuickExpense();">+ Add Last-Minute Expense</button>
+                <button class="btn btn-secondary" style="width:100%;" onclick="hideModal('modal-closeout');toggleQuickExpense();">+ Add a Missing Expense</button>
                 <div class="modal-actions" style="margin-top:20px;">
                     <button class="btn btn-secondary" onclick="hideModal('modal-closeout')">Save &amp; Exit</button>
                     <button class="btn btn-primary" onclick="closeoutGoToStep(2)">Continue →</button>
@@ -1576,9 +1577,12 @@
                 <div style="font-size:48px;margin-bottom:12px;">🎉</div>
                 <div style="font-size:22px;font-weight:800;color:var(--green);margin-bottom:6px;">Deal Closed!</div>
                 <div id="closeout-done-address" style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;"></div>
-                <div id="closeout-done-summary" style="margin-bottom:24px;"></div>
+                <div id="closeout-done-summary" style="margin-bottom:20px;"></div>
+                <div style="background:rgba(255,167,38,0.08);border:1px solid rgba(255,167,38,0.3);border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:var(--text-secondary);text-align:left;">
+                    <strong style="color:var(--yellow);">Find an expense later?</strong> No problem — add it on the Expenses tab, then come back to Property Detail and run <strong>Close Out →</strong> again. The snapshot will refresh with the updated numbers.
+                </div>
                 <div class="modal-actions" style="justify-content:center;gap:12px;">
-                    <button class="btn btn-secondary" onclick="hideModal('modal-closeout');renderAll();">Close</button>
+                    <button class="btn btn-secondary" onclick="hideModal('modal-closeout');renderAll();">Done</button>
                     <button class="btn btn-primary" onclick="hideModal('modal-closeout');switchTab('completed');renderAll();">View in Completed Deals →</button>
                 </div>
             </div>
@@ -2065,10 +2069,10 @@ function closeoutGoToStep(step) {
     const m = prop.metrics;
 
     if (step === 1) {
-        const recent = (prop.expenses || []).slice(-6).reverse();
-        document.getElementById('closeout-recent-expenses').innerHTML = recent.length ? `
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Most Recent Expenses</div>
-            ${recent.map(e => `
+        const allExp = [...(prop.expenses || [])].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 8);
+        document.getElementById('closeout-recent-expenses').innerHTML = allExp.length ? `
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Last ${allExp.length} Expenses — Most Recent First</div>
+            ${allExp.map(e => `
                 <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--bg-primary);border-radius:6px;margin-bottom:4px;font-size:13px;">
                     <span style="color:var(--text-secondary);">${e.date || ''} &nbsp;·&nbsp; ${e.vendor || e.description || ''}</span>
                     <span style="color:var(--yellow);">-${fmt(e.amount)}</span>
@@ -2509,6 +2513,10 @@ function renderPropertyDetail() {
                 actionHTML = `<button onclick="showCloseoutWizard('${prop.id}')"
                     style="margin-top:8px;font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--green);color:var(--green);background:rgba(102,187,106,0.1);cursor:pointer;font-weight:700;white-space:nowrap;">
                     Close Out →</button>`;
+            } else if (current && s.id === 'closed') {
+                actionHTML = `<button onclick="showCloseoutWizard('${prop.id}')"
+                    style="margin-top:8px;font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--purple);color:var(--purple);background:rgba(171,71,188,0.1);cursor:pointer;font-weight:700;white-space:nowrap;">
+                    Re-run Closeout</button>`;
             }
             return `
             <div style="display:flex;flex-direction:column;align-items:center;flex:1;position:relative;z-index:1;">
