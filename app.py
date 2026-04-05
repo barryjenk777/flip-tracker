@@ -564,8 +564,31 @@ def calc_pnl(prop, metrics):
         acq_closing_items = cd_purchase['line_items']
         acq_closing_total = sum(item.get('amount', 0) for item in acq_closing_items)
     else:
+        # No CD uploaded — build explicit named items from manual sub-fields.
+        # EMD, appraisal, and commitment are pre-closing costs entered separately
+        # from acq_closing_cost (the settlement/closing table costs).
         acq_closing_items = []
-        acq_closing_total = metrics['acq_closing_cost']
+        emd_val       = prop.get('emd', 0) or 0
+        appraisal_val = prop.get('appraisal_fee', 0) or 0
+        commitment_val = prop.get('commitment_fee', 0) or 0
+        base_closing  = metrics['acq_closing_cost']
+        if emd_val > 0:
+            acq_closing_items.append({'description': 'Earnest Money Deposit (EMD)',
+                                      'amount': emd_val,
+                                      'tax_category': 'Acquisition - Capitalized'})
+        if appraisal_val > 0:
+            acq_closing_items.append({'description': 'Appraisal Fee',
+                                      'amount': appraisal_val,
+                                      'tax_category': 'Loan Costs - Capitalized'})
+        if commitment_val > 0:
+            acq_closing_items.append({'description': 'Loan Commitment Fee',
+                                      'amount': commitment_val,
+                                      'tax_category': 'Loan Costs - Capitalized'})
+        if base_closing > 0:
+            acq_closing_items.append({'description': 'Settlement / Closing Costs',
+                                      'amount': base_closing,
+                                      'tax_category': 'Title & Settlement - Capitalized'})
+        acq_closing_total = emd_val + appraisal_val + commitment_val + base_closing
 
     # ---- COGS: Renovation — grouped by tax category ----
     expenses = prop.get('expenses', [])
@@ -698,6 +721,7 @@ def calc_pnl(prop, metrics):
         'days_held': metrics['days_held'],
         'months_held': metrics['months_held'],
         'status': metrics['status'],
+        'mortgage_payment_count': len(prop.get('mortgage_payments', [])),
     }
 
 
@@ -2520,6 +2544,24 @@ def update_closing_disclosure(prop_id):
         prop[key]['interest_rate'] = body['interest_rate']
 
     save_data(data)
+    return jsonify({'success': True})
+
+
+@app.route('/api/flips/<prop_id>/closing-disclosure/<cd_type>', methods=['DELETE'])
+def delete_closing_disclosure(prop_id, cd_type):
+    """Remove an uploaded closing disclosure (e.g. erroneous purchase CD on a subject-to deal)."""
+    if cd_type not in ('purchase', 'sale'):
+        return jsonify({'error': 'Invalid type — must be purchase or sale'}), 400
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    key = f'closing_disclosure_{cd_type}'
+    if key in prop:
+        del prop[key]
+        # If this was a purchase CD that auto-populated purchase_settlement, leave
+        # purchase_settlement as-is — the user will correct it manually if needed.
+        save_data(data)
     return jsonify({'success': True})
 
 

@@ -3576,7 +3576,15 @@ function renderPropertyPnl(pnl, prop) {
 
     html += `<tr><td class="pnl-sub">Holding Costs (Capitalized)</td><td style="font-size:10px;color:var(--text-muted)">IRC §263A</td><td class="pnl-amount">${f(pnl.holding_total)}</td></tr>`;
     for (const [label, amt] of Object.entries(pnl.holding_breakdown || {})) {
-        html += `<tr><td class="pnl-subsub">${label}</td><td></td><td class="pnl-amount" style="font-size:11px">${f(amt)}</td></tr>`;
+        if (label === 'Mortgage Interest') {
+            const mpCount = pnl.mortgage_payment_count || 0;
+            const mpNote = mpCount > 0
+                ? `<span style="color:var(--text-muted);font-size:10px;">(${mpCount} payment${mpCount !== 1 ? 's' : ''} logged)</span>`
+                : `<span style="color:var(--yellow);font-size:10px;">⚠ No payments logged — add via Expenses &amp; Draws tab</span>`;
+            html += `<tr><td class="pnl-subsub">${label} ${mpNote}</td><td></td><td class="pnl-amount" style="font-size:11px">${f(amt)}</td></tr>`;
+        } else {
+            html += `<tr><td class="pnl-subsub">${label}</td><td></td><td class="pnl-amount" style="font-size:11px">${f(amt)}</td></tr>`;
+        }
     }
 
     html += `<tr><td class="pnl-sub pnl-total">TOTAL COGS</td><td></td><td class="pnl-amount pnl-total">${f(pnl.total_cogs)}</td></tr>
@@ -3705,18 +3713,38 @@ function renderCdStatus(prop) {
 
     if (cdP && cdP.line_items && cdP.line_items.length) {
         pZone.classList.add('uploaded');
-        $('cd-purchase-status').innerHTML = `✅ ${cdP.filename || 'Uploaded'} (${cdP.upload_date}) — ${cdP.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span>`;
+        // Stop click-to-upload from firing when Remove button is clicked
+        pZone.onclick = (e) => { if (!e.target.closest('.cd-remove-btn')) initCdUpload('purchase'); };
+        $('cd-purchase-status').innerHTML = `✅ ${cdP.filename || 'Uploaded'} (${cdP.upload_date}) — ${cdP.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span><br><button class="cd-remove-btn btn btn-sm" style="margin-top:6px;background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.4);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();removeCD('purchase')">🗑 Remove CD</button>`;
     } else {
         pZone.classList.remove('uploaded');
+        pZone.onclick = () => initCdUpload('purchase');
         $('cd-purchase-status').textContent = 'Click to upload PDF';
     }
 
     if (cdS && cdS.line_items && cdS.line_items.length) {
         sZone.classList.add('uploaded');
-        $('cd-sale-status').innerHTML = `✅ ${cdS.filename || 'Uploaded'} (${cdS.upload_date}) — ${cdS.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span>`;
+        sZone.onclick = (e) => { if (!e.target.closest('.cd-remove-btn')) initCdUpload('sale'); };
+        $('cd-sale-status').innerHTML = `✅ ${cdS.filename || 'Uploaded'} (${cdS.upload_date}) — ${cdS.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span><br><button class="cd-remove-btn btn btn-sm" style="margin-top:6px;background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.4);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();removeCD('sale')">🗑 Remove CD</button>`;
     } else {
         sZone.classList.remove('uploaded');
+        sZone.onclick = () => initCdUpload('sale');
         $('cd-sale-status').textContent = 'Click to upload PDF';
+    }
+}
+
+async function removeCD(type) {
+    const prop = getSelectedProperty('tax-selector');
+    if (!prop) return;
+    const label = type === 'purchase' ? 'Purchase' : 'Sale';
+    if (!confirm(`Remove the ${label} Closing Disclosure for ${prop.address}?\n\nThis will clear the uploaded CD and revert to manual figures. This cannot be undone.`)) return;
+    const res = await apiFetch(`/api/flips/${prop.id}/closing-disclosure/${type}`, { method: 'DELETE' });
+    if (res && res.ok) {
+        showToast(`✅ ${label} CD removed`);
+        await loadFlips();
+        renderTaxPnl();
+    } else {
+        showToast('Failed to remove CD', true);
     }
 }
 
