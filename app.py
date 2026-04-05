@@ -379,7 +379,15 @@ def calc_property_metrics(prop):
         cash_invested_source = 'manual'
 
     # ---- Profit ----
-    total_costs = purchase_price + acq_closing_cost + total_rehab + sale_commission + sale_closing + total_holding_cost
+    # For active/listed deals, use the full rehab budget as the projected rehab cost
+    # (actual spend is almost always lower mid-renovation, inflating profit artificially).
+    # For sold/closed deals, use actual spend — the work is done.
+    _status_for_profit = prop.get('status', 'active')
+    if _status_for_profit not in ('sold', 'closed') and sale_date is None:
+        rehab_for_profit = max(total_rehab, budget) if budget > 0 else total_rehab
+    else:
+        rehab_for_profit = total_rehab
+    total_costs = purchase_price + acq_closing_cost + rehab_for_profit + sale_commission + sale_closing + total_holding_cost
     gross_profit = effective_sale - total_costs
     profit_margin = (gross_profit / effective_sale * 100) if effective_sale > 0 else 0
 
@@ -470,6 +478,8 @@ def calc_property_metrics(prop):
         'purchase_price': purchase_price, 'arv': arv, 'sale_price': sale_price,
         'effective_sale': effective_sale, 'sqft': sqft, 'status': status,
         'total_rehab': total_rehab, 'net_rehab': total_rehab,
+        'rehab_for_profit': rehab_for_profit,
+        'profit_uses_budget': rehab_for_profit > total_rehab,
         'rehab_by_category': rehab_by_category, 'budget': budget,
         'lender_budget': lender_budget,
         'lender_budget_spread': lender_budget_spread,

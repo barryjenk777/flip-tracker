@@ -2291,7 +2291,7 @@ function renderPortfolio() {
                 <span class="status-badge ${m.status}">${m.status}</span>
             </div>
             <div class="mini-stats">
-                <div class="mini-stat"><div class="ms-label">Est. Profit</div><div class="ms-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div></div>
+                <div class="mini-stat"><div class="ms-label">Est. Profit${m.profit_uses_budget?' 📐':''}</div><div class="ms-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div></div>
                 <div class="mini-stat"><div class="ms-label">ROI</div><div class="ms-value" style="color:${m.roi>=20?'var(--green)':m.roi>=10?'var(--yellow)':'var(--red)'}">${pct(m.roi)}</div></div>
                 <div class="mini-stat"><div class="ms-label">Days Held</div><div class="ms-value">${m.days_held}</div></div>
             </div>
@@ -2541,7 +2541,7 @@ function renderPropertyDetail() {
 
     // Stats
     $('property-stats').innerHTML = `
-        <div class="stat-card highlight"><div class="stat-label">Est. Profit</div><div class="stat-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div><div class="stat-sub">${m.cash_invested>0?'Your total: '+fmt(m.partner_total):'Your split: '+fmt(m.partner_share)}</div></div>
+        <div class="stat-card highlight"><div class="stat-label">Est. Profit ${m.profit_uses_budget ? '<span title="Projected using full rehab budget, not actual spend" style="font-size:9px;background:rgba(255,167,38,0.2);color:var(--yellow);padding:1px 5px;border-radius:8px;font-weight:600;vertical-align:middle;">PROJECTED</span>' : ''}</div><div class="stat-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div><div class="stat-sub">${m.profit_uses_budget ? 'Using budget '+fmt(m.rehab_for_profit)+' (spent '+fmt(m.total_rehab)+')' : m.cash_invested>0?'Your total: '+fmt(m.partner_total):'Your split: '+fmt(m.partner_share)}</div></div>
         <div class="stat-card ${m.roi>=20?'green':m.roi>=10?'yellow':'red'}"><div class="stat-label">ROI</div><div class="stat-value">${pct(m.roi)}</div><div class="stat-sub">Annualized: ${pct(m.annualized_roi)}</div></div>
         <div class="stat-card"><div class="stat-label">Cash in Deal</div><div class="stat-value">${fmt(m.cash_in_deal)}</div><div class="stat-sub">OOP: ${fmt(m.total_cash_oop)}</div></div>
         <div class="stat-card"><div class="stat-label">Profit Margin</div><div class="stat-value">${pct(m.profit_margin)}</div></div>
