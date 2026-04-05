@@ -3247,19 +3247,51 @@ function renderExpenses() {
     // Category bars
     renderCategoryBars(m.rehab_by_category, m.total_rehab);
 
-    // Expense table — keep original index for delete
-    const tbody = $('expense-table').querySelector('tbody');
-    const sortedExpenses = (prop.expenses || []).map((e, origIdx) => ({...e, origIdx})).sort((a,b) => (a.date||'').localeCompare(b.date||''));
-    tbody.innerHTML = sortedExpenses.map(e => `
-        <tr${e.is_credit ? ' style="color:var(--green)"' : ''}>
+    // Expense table — split into Rehab and Holding Cost sections
+    const HOLDING_CATS  = new Set(['Utilities']);
+    const SELLING_CATS  = new Set(['Marketing', 'Staging']);
+    const allExpenses = (prop.expenses || []).map((e, origIdx) => ({...e, origIdx}))
+        .sort((a,b) => (b.date||'').localeCompare(a.date||''));  // newest first
+
+    const rehabExps   = allExpenses.filter(e => !HOLDING_CATS.has(e.category) && !SELLING_CATS.has(e.category));
+    const holdingExps = allExpenses.filter(e => HOLDING_CATS.has(e.category));
+    const sellingExps = allExpenses.filter(e => SELLING_CATS.has(e.category));
+
+    function expRow(e) {
+        return `<tr${e.is_credit ? ' style="color:var(--green)"' : ''}>
             <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'date','${(e.date||'').replace(/'/g,"\\'")}','date')">${e.date || '—'}</td>
             <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'vendor','${(e.vendor||'').replace(/'/g,"\\'")}')">${e.vendor || ''}</td>
             <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'description','${(e.description||'').replace(/'/g,"\\'")}')">${e.description || ''}</td>
             <td style="cursor:pointer" onclick="makeEditable(this,${e.origIdx},'category','${(e.category||'').replace(/'/g,"\\'")}')">${e.category || ''}</td>
             <td style="text-align:right;font-weight:600;cursor:pointer" onclick="makeEditable(this,${e.origIdx},'amount','${e.amount}','number')">${e.is_credit ? '-' : ''}${fmtD(e.amount)}</td>
             <td style="text-align:center"><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.origIdx})" style="padding:2px 8px;font-size:11px;">X</button></td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }
+
+    function sectionHeader(label, color, total) {
+        return `<tr style="background:var(--bg-secondary);">
+            <td colspan="4" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${color};padding:8px 10px;">${label}</td>
+            <td style="text-align:right;font-size:12px;font-weight:700;color:${color};padding:8px 10px;">${fmtD(total)}</td>
+            <td></td>
+        </tr>`;
+    }
+
+    const tbody = $('expense-table').querySelector('tbody');
+    let rows = '';
+    if (rehabExps.length) {
+        rows += sectionHeader('Rehab / Contractor Expenses', 'var(--accent)', m.total_rehab);
+        rows += rehabExps.map(expRow).join('');
+    }
+    if (holdingExps.length) {
+        rows += sectionHeader('Holding Cost Expenses (Utilities)', 'var(--yellow)', m.total_holding_from_expenses);
+        rows += holdingExps.map(expRow).join('');
+    }
+    if (sellingExps.length) {
+        rows += sectionHeader('Selling Expenses (Marketing / Staging)', 'var(--purple)', m.total_selling_from_expenses);
+        rows += sellingExps.map(expRow).join('');
+    }
+    if (!rows) rows = `<tr><td colspan="6" style="color:var(--text-muted);padding:16px;text-align:center;">No expenses yet.</td></tr>`;
+    tbody.innerHTML = rows;
 
     // Draws
     $('draw-blocks').innerHTML = (prop.draws || []).map((d, i) => `
@@ -3271,10 +3303,11 @@ function renderExpenses() {
             <button class="btn btn-danger btn-sm" onclick="deleteDraw(${i})" style="margin-top:6px;padding:2px 8px;font-size:10px;">Delete</button>
         </div>
     `).join('');
-    $('draw-summary').innerHTML = `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
+    $('draw-summary').innerHTML = `<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13px;color:var(--text-secondary);">
         <span>Total Draws: <strong style="color:var(--green)">${fmt(m.total_draws)}</strong></span>
-        <span>Total Rehab: <strong>${fmt(m.total_rehab)}</strong></span>
-        <span>Surplus: <strong style="color:${m.draw_credit>=0?'var(--green)':'var(--red)'}">${fmt(m.draw_credit)}</strong></span>
+        <span>Contractor Rehab: <strong style="color:var(--accent)">${fmt(m.total_rehab)}</strong></span>
+        ${m.total_holding_from_expenses > 0 ? `<span>Utilities (expenses): <strong style="color:var(--yellow)">${fmt(m.total_holding_from_expenses)}</strong></span>` : ''}
+        <span>Draw Surplus: <strong style="color:${m.draw_credit>=0?'var(--green)':'var(--red)'}">${fmt(m.draw_credit)}</strong></span>
     </div>`;
 
     // Mortgages

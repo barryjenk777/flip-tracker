@@ -260,19 +260,35 @@ def calc_property_metrics(prop):
         'monthly_utilities': 0, 'monthly_hoa': 0, 'monthly_lawn': 0, 'monthly_other': 0,
     })
 
-    # ---- Rehab costs ----
-    total_rehab = sum(e.get('amount', 0) for e in expenses if not e.get('is_credit'))
-    total_credits = sum(e.get('amount', 0) for e in expenses if e.get('is_credit'))
-    total_rehab -= total_credits
+    # ---- Rehab costs — renovation expenses only ----
+    # Utilities, Marketing, Staging are holding/selling costs, not rehab.
+    HOLDING_EXPENSE_CATS  = {'Utilities'}
+    SELLING_EXPENSE_CATS  = {'Marketing', 'Staging'}
 
-    rehab_by_category = {}
+    total_rehab = 0
+    total_holding_from_expenses = 0   # utility bills entered as expenses
+    total_selling_from_expenses = 0   # marketing/staging entered as expenses
+    total_credits = 0
+    rehab_by_category    = {}
+    holding_by_category  = {}
+
     for e in expenses:
-        if e.get('is_credit'):
-            continue
+        amt = e.get('amount', 0)
         cat = e.get('category', 'Other')
-        rehab_by_category[cat] = rehab_by_category.get(cat, 0) + e.get('amount', 0)
+        if e.get('is_credit'):
+            total_credits += amt
+            total_rehab -= amt          # credits offset rehab
+            continue
+        if cat in HOLDING_EXPENSE_CATS:
+            total_holding_from_expenses += amt
+            holding_by_category[cat] = holding_by_category.get(cat, 0) + amt
+        elif cat in SELLING_EXPENSE_CATS:
+            total_selling_from_expenses += amt
+        else:
+            total_rehab += amt
+            rehab_by_category[cat] = rehab_by_category.get(cat, 0) + amt
 
-    # Budget tracking — actual budget vs lender budget
+    # Budget tracking — renovation expenses only vs rehab budget
     budget = prop.get('rehab_budget', 0) or 0  # what you expect to actually spend
     lender_budget = prop.get('lender_rehab_budget', 0) or 0  # what the lender approved for draws
     if lender_budget == 0:
@@ -387,7 +403,7 @@ def calc_property_metrics(prop):
         rehab_for_profit = max(total_rehab, budget) if budget > 0 else total_rehab
     else:
         rehab_for_profit = total_rehab
-    total_costs = purchase_price + acq_closing_cost + rehab_for_profit + sale_commission + sale_closing + total_holding_cost
+    total_costs = purchase_price + acq_closing_cost + rehab_for_profit + total_holding_from_expenses + total_selling_from_expenses + sale_commission + sale_closing + total_holding_cost
     gross_profit = effective_sale - total_costs
     profit_margin = (gross_profit / effective_sale * 100) if effective_sale > 0 else 0
 
@@ -480,6 +496,9 @@ def calc_property_metrics(prop):
         'total_rehab': total_rehab, 'net_rehab': total_rehab,
         'rehab_for_profit': rehab_for_profit,
         'profit_uses_budget': rehab_for_profit > total_rehab,
+        'total_holding_from_expenses': total_holding_from_expenses,
+        'total_selling_from_expenses': total_selling_from_expenses,
+        'holding_by_category': holding_by_category,
         'rehab_by_category': rehab_by_category, 'budget': budget,
         'lender_budget': lender_budget,
         'lender_budget_spread': lender_budget_spread,
