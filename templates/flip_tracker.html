@@ -1537,7 +1537,9 @@
                 <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">Review your most recent expenses below. Ask yourself: <strong style="color:var(--text-primary);">is anything missing?</strong> Touch-up labor, final utility bills, title corrections, and warranty items are commonly forgotten at closing.</div>
                 <div style="font-size:12px;color:var(--yellow);margin-bottom:16px;">⚠️ Once you lock the deal, numbers are frozen — add anything outstanding now.</div>
                 <div id="closeout-recent-expenses" style="margin-bottom:10px;"></div>
-                <button class="btn btn-secondary" style="width:100%;" onclick="hideModal('modal-closeout');toggleQuickExpense();">+ Add a Missing Expense</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary" style="flex:1;" onclick="hideModal('modal-closeout');showAddExpense();">+ Add Expense or Refund</button>
+                </div>
                 <div class="modal-actions" style="margin-top:20px;">
                     <button class="btn btn-secondary" onclick="hideModal('modal-closeout')">Save &amp; Exit</button>
                     <button class="btn btn-primary" onclick="closeoutGoToStep(2)">Continue →</button>
@@ -1751,11 +1753,12 @@ function showEditProperty() {
     $('ep-split').value = prop.partner_split_pct || 50;
     $('ep-contingency').value = prop.contingency_pct || 15;
     $('ep-notes').value = prop.notes || '';
-    // Show closeout button if property has a sale date and isn't already closed
+    // Show closeout button for any deal with a sale date (sold or already closed)
     const closeoutBtn = $('ep-closeout-btn');
     if (closeoutBtn) {
-        const isSold = prop.sale_date && prop.status !== 'closed';
-        closeoutBtn.style.display = isSold ? '' : 'none';
+        const hasSaleDate = !!prop.sale_date;
+        closeoutBtn.style.display = hasSaleDate ? '' : 'none';
+        closeoutBtn.textContent = prop.status === 'closed' ? 'Update Closeout →' : 'Close Out Deal →';
     }
     showModal('modal-edit-property');
 }
@@ -2074,8 +2077,8 @@ function closeoutGoToStep(step) {
             <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Last ${allExp.length} Expenses — Most Recent First</div>
             ${allExp.map(e => `
                 <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--bg-primary);border-radius:6px;margin-bottom:4px;font-size:13px;">
-                    <span style="color:var(--text-secondary);">${e.date || ''} &nbsp;·&nbsp; ${e.vendor || e.description || ''}</span>
-                    <span style="color:var(--yellow);">-${fmt(e.amount)}</span>
+                    <span style="color:var(--text-secondary);">${e.date || ''} &nbsp;·&nbsp; ${e.vendor || e.description || ''}${e.is_credit ? ' &nbsp;<span style="font-size:10px;background:rgba(76,175,80,0.15);color:var(--green);padding:1px 5px;border-radius:4px;">REFUND</span>' : ''}</span>
+                    <span style="color:${e.is_credit ? 'var(--green)' : 'var(--yellow)'};">${e.is_credit ? '+' : '-'}${fmt(e.amount)}</span>
                 </div>`).join('')}
         ` : `<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;background:var(--bg-primary);border-radius:6px;">No expenses on record yet.</div>`;
     }
