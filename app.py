@@ -726,7 +726,11 @@ def calc_pnl(prop, metrics):
 
 
 def parse_closing_disclosure(pdf_bytes):
-    """Parse a CFPB Closing Disclosure PDF and extract financial data."""
+    """Parse settlement statements in multiple formats:
+       - CFPB Closing Disclosure (post-2015, standard residential)
+       - HUD-1 Settlement Statement (pre-2015 or commercial/investment)
+       - ALTA Settlement Statement (cash/subject-to deals)
+    """
     try:
         import pdfplumber
     except ImportError:
@@ -741,6 +745,7 @@ def parse_closing_disclosure(pdf_bytes):
         'closing_date': '',
         'line_items': [],
         'raw_text': '',
+        'form_type': 'unknown',
     }
 
     try:
@@ -754,24 +759,191 @@ def parse_closing_disclosure(pdf_bytes):
         # Clean up encoding issues (ligatures, special chars)
         all_text = all_text.replace('\ufb01', 'fi').replace('\ufb02', 'fl')
         all_text = all_text.replace('\ufb00', 'ff').replace('\ufb03', 'ffi').replace('\ufb04', 'ffl')
-        # Replace common PDF extraction artifacts
         all_text = re.sub(r'[^\x00-\x7F]', '', all_text)  # strip non-ASCII
         result['raw_text'] = all_text[:20000]
 
-        # Extract loan amount — try multiple patterns
+        # ---------------------------------------------------------------
+        # Detect form type — drives which extraction logic to use
+        # ---------------------------------------------------------------
+        text_lower = all_text.lower()
+        is_hud1 = (
+            'settlement statement' in text_lower and
+            ('u.s. department of housing' in text_lower or 'hud-1' in text_lower or
+             '100. gross amount due from borrower' in text_lower or
+             '200. amount paid by or in behalf' in text_lower or
+             '300. cash at settlement' in text_lower)
+        )
+        is_alta = (
+            'alta settlement statement' in text_lower or
+            ('american land title association' in text_lower and 'settlement statement' in text_lower)
+        )
+        is_cfpb = 'closing disclosure' in text_lower
+
+        if is_hud1:
+            result['form_type'] = 'HUD-1'
+        elif is_alta:
+            result['form_type'] = 'ALTA'
+        elif is_cfpb:
+            result['form_type'] = 'CFPB-CD'
+        else:
+            result['form_type'] = 'unknown'
+
+        # ---------------------------------------------------------------
+        # HUD-1 specific extraction
+        # ---------------------------------------------------------------
+        if is_hud1:
+            def clean_hud_amount(s):
+                """Handle PDF artifacts: $418.500.00 (period as thousands sep) → 418500.00"""
+                s = s.replace(',', '')
+                # Fix period-as-thousands-separator: X.XXX.XX → XXXXX.XX
+                # Pattern: digit(s) . three-digits . two-digits at end
+                s = re.sub(r'(\d+)\.(\d{3})\.(\d{2})$', r'\1\2.\3', s)
+                return float(s)
+
+            # Cash to close: Line 303
+            # Actual text: "303. Cash [X} From D To Borrower $54,010.26 603. ..."
+            # Brackets may be [X], [X}, {X], (X) due to PDF artifacts
+            hud_cash_patterns = [
+                r'303\.?\s*Cash\s*[\[{(][Xx][\]})]\s*[Ff]rom\s*(?:[A-Z]\s*[Tt]o\s*)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                r'303\.?\s*Cash\s*[\[{(][Xx][\]})]\s*(?:\w+\s+)?[Ff]rom\s*(?:\w+\s*)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                r'303\.?\s*Cash\s+[Ff]rom\s+Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                r'Cash\s*[\[{(][Xx][\]})]\s*[Ff]rom\s*\w*\s*[Tt]o\s*Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                r'Cash\s*[\[{(][Xx][\]})]\s*[Ff]rom\s*Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                r'Cash\s*[Ff]rom\s*Borrower\s*\$\s*([\d,]+\.\d{2})',
+            ]
+            for pattern in hud_cash_patterns:
+                m = re.search(pattern, all_text, re.IGNORECASE)
+                if m:
+                    try:
+                        val = clean_hud_amount(m.group(1))
+                        if val > 100:
+                            result['cash_to_close'] = val
+                            break
+                    except ValueError:
+                        continue
+
+            # Loan amount: Line 202 — may have period as thousands separator
+            hud_loan_patterns = [
+                r'202\.?\s*Principal\s*amount\s*of\s*new\s*loan[s(]?\)?\s*[{]?\s*\$?\s*([\d,.]+)',
+                r'202\.?\s*Principal\s*amount.*?\$?\s*([\d,.]+)',
+                r'Principal\s*amount\s*of\s*new\s*loan\s*\$?\s*([\d,.]+)',
+            ]
+            for pattern in hud_loan_patterns:
+                m = re.search(pattern, all_text, re.IGNORECASE)
+                if m:
+                    try:
+                        val = clean_hud_amount(m.group(1))
+                        if val > 10000:
+                            result['loan_amount'] = val
+                            break
+                    except ValueError:
+                        continue
+
+            # Settlement date — on the line after "I. Settlement Date:" in some PDFs
+            # Try inline first, then next-line
+            date_found = False
+            for pattern in [
+                r'Settlement\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
+                r'I\.?\s*Settlement\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
+            ]:
+                m = re.search(pattern, all_text, re.IGNORECASE)
+                if m:
+                    result['closing_date'] = m.group(1).strip()
+                    date_found = True
+                    break
+            if not date_found:
+                # Try: "Settlement Date:\n07/09/2025" (date on next line)
+                m = re.search(r'Settlement\s*Date[:\s]*\n(\d{1,2}/\d{1,2}/\d{2,4})', all_text, re.IGNORECASE)
+                if m:
+                    result['closing_date'] = m.group(1).strip()
+                else:
+                    # Fallback: grab any date near Settlement Agent line
+                    m = re.search(r'Settlement\s*Agent.*?(\d{1,2}/\d{1,2}/\d{4})', all_text, re.IGNORECASE | re.DOTALL)
+                    if m:
+                        result['closing_date'] = m.group(1).strip()
+
+            # Sale price: Line 101
+            for pattern in [
+                r'101\.?\s*Contract\s*sales?\s*price\s*\$?\s*([\d,.]+)',
+                r'Contract\s*sales?\s*price\s*\$?\s*([\d,.]+)',
+            ]:
+                m = re.search(pattern, all_text, re.IGNORECASE)
+                if m:
+                    try:
+                        val = clean_hud_amount(m.group(1))
+                        if val > 50000:
+                            result['sale_price'] = val
+                            break
+                    except ValueError:
+                        continue
+
+            # HUD-1 line items: Lines 700-1399 are actual settlement fees
+            # The HUD-1 lays out borrower column and seller column on the same line,
+            # so we parse by line number range
+            hud_line_pattern = re.compile(
+                r'(\d{3,4})\.?\s+(.+?)\s+\$?\s*([\d,]+\.\d{2})(?:\s|$)',
+                re.MULTILINE
+            )
+            hud_fee_sections = set(range(700, 1400))
+            hud_exclude = [
+                'commission', 'total settlement', 'gross amount',
+                'less amounts paid', 'cash at settlement', 'cash from', 'cash to',
+                'reduction in amount', 'payoff', 'existing loan',
+                'settlement charges to seller',
+            ]
+
+            seen_hud = {}
+            for match in hud_line_pattern.finditer(all_text):
+                line_num = int(match.group(1))
+                desc = match.group(2).strip()
+                try:
+                    amount = float(match.group(3).replace(',', ''))
+                except ValueError:
+                    continue
+
+                if line_num not in hud_fee_sections:
+                    continue
+                if amount < 5 or amount > 50000:
+                    continue
+                desc_lower = desc.lower()
+                if any(kw in desc_lower for kw in hud_exclude):
+                    continue
+                if len(desc) < 3:
+                    continue
+
+                tax_cat = 'Other - Review Required'
+                for keyword, category in CD_TAX_KEYWORDS.items():
+                    if keyword in desc_lower:
+                        tax_cat = category
+                        break
+
+                amt_key = f"{amount:.2f}"
+                if amt_key not in seen_hud or len(desc) > len(seen_hud[amt_key]['description']):
+                    seen_hud[amt_key] = {'description': desc, 'amount': amount, 'tax_category': tax_cat}
+
+            result['line_items'] = list(seen_hud.values())
+            result['closing_costs_total'] = sum(i['amount'] for i in result['line_items'])
+            return result
+
+        # ---------------------------------------------------------------
+        # ALTA and CFPB CD extraction (shared logic, slight differences)
+        # ---------------------------------------------------------------
+
+        # Extract loan amount
         for pattern in [
             r'Loan\s*Amount\s*\$?\s*([\d,]+\.?\d*)',
+            r'202\.?\s*Principal\s*amount\s*of\s*new\s*loan[s]?\s*\$?\s*([\d,]+\.?\d*)',
             r'Amount\s*\$?\s*([\d,]{4,}\.?\d*)',
             r'Principal.*?\$?\s*([\d,]{4,}\.\d{2})',
         ]:
             m = re.search(pattern, all_text, re.IGNORECASE)
             if m:
                 val = float(m.group(1).replace(',', ''))
-                if val > 10000:  # must be a meaningful loan amount
+                if val > 10000:
                     result['loan_amount'] = val
                     break
 
-        # Extract interest rate — try multiple patterns
+        # Extract interest rate
         for pattern in [
             r'Interest\s*Rate\s*[:\s]*([\d.]+)\s*%',
             r'Rate\s*[:\s]*([\d.]+)\s*%',
@@ -780,27 +952,21 @@ def parse_closing_disclosure(pdf_bytes):
             m = re.search(pattern, all_text, re.IGNORECASE)
             if m:
                 val = float(m.group(1))
-                if 1 < val < 30:  # reasonable interest rate range
+                if 1 < val < 30:
                     result['interest_rate'] = val
                     break
 
-        # Extract cash to close — try multiple patterns
-        # CFPB CD format: "Cash to Close $XX,XXX.XX"
-        # HUD-1 format: "Cash From Borrower $XX,XXX.XX" or "303. Cash X From Borrower $XX,XXX.XX"
-        # ALTA Settlement Statement format: "Due From Borrower  5,259.16" (no $ sign, no "at Closing")
-        # Subject-to / cash deals: "Due From Buyer", "Amount Due From Buyer"
+        # Extract cash to close — CFPB CD and ALTA formats
         for pattern in [
             r'Cash\s*to\s*Close\s*\$?\s*([\d,]+\.?\d*)',
             r'Cash\s*From\s*(?:X\s*To\s*)?Seller\s*\$?\s*([\d,]+\.?\d*)',
             r'Cash\s*[Ff]rom\s*Borrower\s*\$?\s*([\d,]+\.?\d*)',
             r'Cash\s*(?:from|to)\s*(?:Borrower|Buyer|Seller)\s*\$?\s*([\d,]+\.?\d*)',
-            r'Due\s*[Ff]rom\s*Borrower\s+\$?\s*([\d,]+\.?\d*)',   # ALTA: no "at Closing", no $
-            r'Due\s*[Ff]rom\s*Buyer\s+\$?\s*([\d,]+\.?\d*)',       # ALTA alternate buyer label
+            r'Due\s*[Ff]rom\s*Borrower\s+\$?\s*([\d,]+\.?\d*)',
+            r'Due\s*[Ff]rom\s*Buyer\s+\$?\s*([\d,]+\.?\d*)',
             r'Amount\s*Due\s*[Ff]rom\s*(?:Borrower|Buyer)\s+\$?\s*([\d,]+\.?\d*)',
             r'Due\s*from\s*Borrower\s*at\s*Closing\s*\$?\s*([\d,]+\.?\d*)',
-            r'303\.?\s*Cash\s*X?\s*[Ff]rom\s*(?:To\s*)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
             r'TOTAL\s*CLOSING\s*COSTS?\s*\$?\s*([\d,]+\.?\d*)',
-            r'Se\s*lement\s*charges\s*to\s*borrower.*?\$?\s*([\d,]+\.?\d*)',
         ]:
             m = re.search(pattern, all_text, re.IGNORECASE)
             if m:
@@ -809,7 +975,7 @@ def parse_closing_disclosure(pdf_bytes):
                     result['cash_to_close'] = val
                     break
 
-        # Extract sale price — CFPB CD, HUD-1 formats
+        # Extract sale price
         for pattern in [
             r'(?:Contract\s*)?Sales?\s*Price\s*\$?\s*([\d,]+\.?\d*)',
             r'Contract\s*Sales\s*Price\s*\$?\s*([\d,]+\.?\d*)',
@@ -835,12 +1001,9 @@ def parse_closing_disclosure(pdf_bytes):
                 result['closing_date'] = m.group(1).strip()
                 break
 
-        # Extract line items — look for lines with dollar amounts
-        # IMPORTANT: Filter out non-closing-cost items (sale price, loan amount, deposits, etc.)
-        # Closing Disclosures have sections A-H for actual closing costs on page 2
+        # Extract line items
         line_pattern = re.compile(r'^(.+?)\s+\$?([\d,]+\.\d{2})\s*$', re.MULTILINE)
 
-        # These are NOT closing costs — they're summary/header items from page 1 and 3
         exclude_keywords = [
             'total', 'page', 'closing disclosure', 'loan estimate',
             'projected', 'annual', 'monthly', 'sale price', 'sales price',
@@ -856,69 +1019,56 @@ def parse_closing_disclosure(pdf_bytes):
             'payoff amount', 'amount owed', 'proration',
             'gross amount', 'summary', 'subtotal',
             'contract sales', 'personal property',
-            'constuc on draw', 'construction draw',  # lender draws, not closing costs
-            'commission to', 'commission paid', 'commission',  # commissions tracked separately
-            'better homes', 'keller williams', 'realty', 'remax', 're/max',  # brokerage names
-            'debt paydown', 'american express',  # personal payoffs
+            'constuc on draw', 'construction draw',
+            'commission to', 'commission paid', 'commission',
+            'better homes', 'keller williams', 'realty', 'remax', 're/max',
+            'debt paydown', 'american express',
             'payoff of', 'loan payoff',
         ]
 
-        # Only include items that look like actual fees/charges (typically under $50K)
         for match in line_pattern.finditer(all_text):
             desc = match.group(1).strip()
             amount = float(match.group(2).replace(',', ''))
-            # Skip tiny amounts and anything over $50K (those are loan/price amounts, not fees)
             if amount < 5 or amount > 50000:
                 continue
             desc_lower = desc.lower()
-            # Skip excluded items
             if any(kw in desc_lower for kw in exclude_keywords):
                 continue
-            # Skip lines that are just numbers or very short
             if len(desc) < 3:
                 continue
-            # Classify for tax purposes
             tax_cat = 'Other - Review Required'
             for keyword, category in CD_TAX_KEYWORDS.items():
                 if keyword in desc_lower:
                     tax_cat = category
                     break
-
             result['line_items'].append({
                 'description': desc,
                 'amount': amount,
                 'tax_category': tax_cat,
             })
 
-        # Deduplicate: same amount items, keep the one with the longer/better description
+        # Deduplicate by amount
         seen_amounts = {}
         for item in result['line_items']:
             amt_key = f"{item['amount']:.2f}"
             if amt_key in seen_amounts:
-                # Keep the one with the longer description (more context)
-                existing = seen_amounts[amt_key]
-                if len(item['description']) > len(existing['description']):
+                if len(item['description']) > len(seen_amounts[amt_key]['description']):
                     seen_amounts[amt_key] = item
             else:
                 seen_amounts[amt_key] = item
         result['line_items'] = list(seen_amounts.values())
 
-        # Remove junk lines: descriptions starting with numbers like "01", "02" etc
-        # that are ALTA/CD section prefixes, and "Premium:" echo lines
+        # Clean junk lines
         cleaned = []
         for item in result['line_items']:
             desc = item['description']
             desc_lower = desc.lower().strip()
-            # Skip "Premium:" lines (just echoes title insurance amounts)
             if desc_lower.startswith('premium'):
                 continue
-            # Skip lines that start with "$ " (ALTA column artifacts)
             if desc.startswith('$ '):
                 continue
-            # Skip "POC" lines (Paid Outside Closing markers, not actual charges)
             if desc_lower in ('poc', 'poc $') or (desc_lower.startswith('poc') and len(desc_lower) < 10):
                 continue
-            # Clean up leading ALTA section numbers like "01", "02", "05Grantors"
             desc_cleaned = re.sub(r'^\d{2}', '', desc).strip()
             if desc_cleaned:
                 item['description'] = desc_cleaned
@@ -2567,11 +2717,18 @@ def update_closing_disclosure(prop_id):
     if key not in prop:
         return jsonify({'error': f'No {cd_type} closing disclosure uploaded'}), 400
 
-    # Update line items and interest rate with user corrections
+    # Update line items and all user-editable header fields
     prop[key]['line_items'] = body.get('line_items', prop[key].get('line_items', []))
     prop[key]['closing_costs_total'] = sum(item.get('amount', 0) for item in prop[key]['line_items'])
     if 'interest_rate' in body:
         prop[key]['interest_rate'] = body['interest_rate']
+    if 'cash_to_close' in body and body['cash_to_close'] is not None:
+        prop[key]['cash_to_close'] = float(body['cash_to_close'])
+        # Also sync purchase_settlement for purchase CDs so cash_in_deal recalculates
+        if cd_type == 'purchase':
+            prop['purchase_settlement'] = float(body['cash_to_close'])
+    if 'loan_amount' in body and body['loan_amount'] is not None:
+        prop[key]['loan_amount'] = float(body['loan_amount'])
 
     save_data(data)
     return jsonify({'success': True})
