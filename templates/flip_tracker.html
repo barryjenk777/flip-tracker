@@ -3711,21 +3711,29 @@ function renderCdStatus(prop) {
     const sZone = $('cd-sale-zone');
     if (!pZone || !sZone) return;
 
-    if (cdP && cdP.line_items && cdP.line_items.length) {
+    // A CD is "uploaded" if it has line items OR a valid cash_to_close/loan_amount
+    // (HUD-1 forms may parse 0 line items but still have correct summary numbers)
+    const pUploaded = cdP && (cdP.cash_to_close > 0 || cdP.loan_amount > 0 || (cdP.line_items && cdP.line_items.length > 0));
+    const sUploaded = cdS && (cdS.cash_to_close > 0 || (cdS.line_items && cdS.line_items.length > 0));
+
+    if (pUploaded) {
         pZone.classList.add('uploaded');
-        // Stop click-to-upload from firing when Remove button is clicked
         pZone.onclick = (e) => { if (!e.target.closest('.cd-remove-btn')) initCdUpload('purchase'); };
-        $('cd-purchase-status').innerHTML = `✅ ${cdP.filename || 'Uploaded'} (${cdP.upload_date}) — ${cdP.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span><br><button class="cd-remove-btn btn btn-sm" style="margin-top:6px;background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.4);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();removeCD('purchase')">🗑 Remove CD</button>`;
+        const pItems = (cdP.line_items || []).length;
+        const pSummary = pItems > 0 ? `${pItems} items` : `Cash to Close: $${(cdP.cash_to_close||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+        $('cd-purchase-status').innerHTML = `✅ ${cdP.filename || 'Uploaded'} (${cdP.upload_date||''}) — ${pSummary}<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span><br><button class="cd-remove-btn btn btn-sm" style="margin-top:6px;background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.4);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();removeCD('purchase')">🗑 Remove CD</button>`;
     } else {
         pZone.classList.remove('uploaded');
         pZone.onclick = () => initCdUpload('purchase');
         $('cd-purchase-status').textContent = 'Click to upload PDF';
     }
 
-    if (cdS && cdS.line_items && cdS.line_items.length) {
+    if (sUploaded) {
         sZone.classList.add('uploaded');
         sZone.onclick = (e) => { if (!e.target.closest('.cd-remove-btn')) initCdUpload('sale'); };
-        $('cd-sale-status').innerHTML = `✅ ${cdS.filename || 'Uploaded'} (${cdS.upload_date}) — ${cdS.line_items.length} items<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span><br><button class="cd-remove-btn btn btn-sm" style="margin-top:6px;background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.4);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();removeCD('sale')">🗑 Remove CD</button>`;
+        const sItems = (cdS.line_items || []).length;
+        const sSummary = sItems > 0 ? `${sItems} items` : `Net Proceeds: $${(cdS.cash_to_close||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+        $('cd-sale-status').innerHTML = `✅ ${cdS.filename || 'Uploaded'} (${cdS.upload_date||''}) — ${sSummary}<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span><br><button class="cd-remove-btn btn btn-sm" style="margin-top:6px;background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.4);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();removeCD('sale')">🗑 Remove CD</button>`;
     } else {
         sZone.classList.remove('uploaded');
         sZone.onclick = () => initCdUpload('sale');
