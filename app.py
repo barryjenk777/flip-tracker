@@ -351,9 +351,9 @@ def calc_property_metrics(prop):
     # EMD, commitment, and appraisal are typically paid OUTSIDE/BEFORE closing (not in CD cash-to-close),
     # so they are added separately. down_payment is NOT added to avoid double-counting.
     if purchase_settlement > 0:
-        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost
+        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost + total_holding_from_expenses
     else:
-        total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost
+        total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost + total_holding_from_expenses
     draw_surplus = max(total_draws - total_rehab, 0)
     draws_applied = min(total_draws, total_rehab)
     cash_in_deal = total_cash_oop - draws_applied - draw_surplus
@@ -1476,6 +1476,36 @@ def add_expense(prop_id):
             save_data(data)
             metrics = calc_property_metrics(prop)
             return jsonify({**prop, 'metrics': metrics})
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/api/flips/<prop_id>/expense/<int:idx>', methods=['PUT'])
+def update_expense(prop_id, idx):
+    data = load_data()
+    for prop in data['properties']:
+        if prop.get('id') == prop_id:
+            expenses = prop.get('expenses', [])
+            if idx < 0 or idx >= len(expenses):
+                return jsonify({'error': 'Index out of range'}), 400
+            expenses[idx].update(request.json)
+            save_data(data)
+            metrics = calc_property_metrics(prop)
+            return jsonify({**prop, 'metrics': metrics})
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/api/flips/<prop_id>/expense/<int:idx>', methods=['DELETE'])
+def delete_expense(prop_id, idx):
+    data = load_data()
+    for prop in data['properties']:
+        if prop.get('id') == prop_id:
+            expenses = prop.get('expenses', [])
+            if idx < 0 or idx >= len(expenses):
+                return jsonify({'error': 'Index out of range'}), 400
+            removed = expenses.pop(idx)
+            save_data(data)
+            metrics = calc_property_metrics(prop)
+            return jsonify({**prop, 'metrics': metrics, 'removed': removed})
     return jsonify({'error': 'Not found'}), 404
 
 
