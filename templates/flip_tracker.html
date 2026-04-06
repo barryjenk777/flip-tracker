@@ -1709,7 +1709,29 @@ function switchTab(name) {
 function showModal(id) { $(id).classList.add('show'); }
 function hideModal(id) { $(id).classList.remove('show'); }
 function showAddProperty() { showModal('modal-add-property'); }
-function showAddExpense() { showModal('modal-add-expense'); }
+function showAddExpense() {
+    // Pre-fill today's date
+    const neDate = $('ne-date');
+    if (neDate && !neDate.value) neDate.value = new Date().toISOString().split('T')[0];
+
+    // Populate vendor datalist from actual expense history (same as quick expense sheet)
+    const dl = $('vendor-suggestions');
+    if (dl) {
+        const existing = new Set([...dl.options].map(o => o.value.toLowerCase()));
+        const allVendors = new Set();
+        (flipData.properties || []).forEach(p =>
+            (p.expenses || []).forEach(e => { if (e.vendor) allVendors.add(e.vendor); })
+        );
+        allVendors.forEach(v => {
+            if (!existing.has(v.toLowerCase())) {
+                const opt = document.createElement('option');
+                opt.value = v;
+                dl.appendChild(opt);
+            }
+        });
+    }
+    showModal('modal-add-expense');
+}
 function showAddDraw() { showModal('modal-add-draw'); }
 function showAddMortgage() { showModal('modal-add-mortgage'); }
 
