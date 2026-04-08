@@ -776,7 +776,8 @@ def parse_closing_disclosure(pdf_bytes):
         # Clean up encoding issues (ligatures, special chars)
         all_text = all_text.replace('\ufb01', 'fi').replace('\ufb02', 'fl')
         all_text = all_text.replace('\ufb00', 'ff').replace('\ufb03', 'ffi').replace('\ufb04', 'ffl')
-        all_text = re.sub(r'[^\x00-\x7F]', '', all_text)  # strip non-ASCII
+        all_text = all_text.replace('\x00', '')  # strip null bytes — PDF ligature artifacts (ti/tt replace with nothing)
+        all_text = re.sub(r'[^\x00-\x7F]', '', all_text)  # strip remaining non-ASCII
         result['raw_text'] = all_text[:20000]
 
         # ---------------------------------------------------------------
@@ -784,11 +785,13 @@ def parse_closing_disclosure(pdf_bytes):
         # ---------------------------------------------------------------
         text_lower = all_text.lower()
         is_hud1 = (
-            'settlement statement' in text_lower and
+            # 'settlement' may appear as 'selement' after null-byte ligature stripping
+            ('settlement statement' in text_lower or 'selement statement' in text_lower) and
             ('u.s. department of housing' in text_lower or 'hud-1' in text_lower or
              '100. gross amount due from borrower' in text_lower or
              '200. amount paid by or in behalf' in text_lower or
-             '300. cash at settlement' in text_lower)
+             '300. cash at settlement' in text_lower or
+             '300. cash at selement' in text_lower)
         )
         is_alta = (
             'alta settlement statement' in text_lower or
@@ -821,12 +824,20 @@ def parse_closing_disclosure(pdf_bytes):
             # Actual text: "303. Cash [X} From D To Borrower $54,010.26 603. ..."
             # Brackets may be [X], [X}, {X], (X) due to PDF artifacts
             hud_cash_patterns = [
+                # Bracketed X patterns — [X], {X}, (X) variants
                 r'303\.?\s*Cash\s*[\[{(][Xx][\]})]\s*[Ff]rom\s*(?:[A-Z]\s*[Tt]o\s*)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
                 r'303\.?\s*Cash\s*[\[{(][Xx][\]})]\s*(?:\w+\s+)?[Ff]rom\s*(?:\w+\s*)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                # Bare X — "303. Cash X From To Borrower $42,996.91" (FROM borrower)
+                r'303\.?\s*Cash\s+X\s+[Ff]rom\s+(?:[Tt]o\s+)?Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                # Bare X — "303. Cash From X To Borrower $25,106.88" (TO borrower / cashback)
+                r'303\.?\s*Cash\s+[Ff]rom\s+X\s+[Tt]o\s+Borrower\s*\$?\s*([\d,]+\.?\d*)',
+                # No checkbox text
                 r'303\.?\s*Cash\s+[Ff]rom\s+Borrower\s*\$?\s*([\d,]+\.?\d*)',
                 r'Cash\s*[\[{(][Xx][\]})]\s*[Ff]rom\s*\w*\s*[Tt]o\s*Borrower\s*\$?\s*([\d,]+\.?\d*)',
                 r'Cash\s*[\[{(][Xx][\]})]\s*[Ff]rom\s*Borrower\s*\$?\s*([\d,]+\.?\d*)',
                 r'Cash\s*[Ff]rom\s*Borrower\s*\$\s*([\d,]+\.\d{2})',
+                # Catch-all: first dollar amount on any line 303 (handles TO borrower / cashback CDs)
+                r'303\.?\s*Cash[^\n]*?\$\s*([\d,]+\.\d{2})',
             ]
             for pattern in hud_cash_patterns:
                 m = re.search(pattern, all_text, re.IGNORECASE)
@@ -857,11 +868,12 @@ def parse_closing_disclosure(pdf_bytes):
                         continue
 
             # Settlement date — on the line after "I. Settlement Date:" in some PDFs
+            # 'Settlement' may appear as 'Selement' after null-byte ligature stripping
             # Try inline first, then next-line
             date_found = False
             for pattern in [
-                r'Settlement\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
-                r'I\.?\s*Settlement\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
+                r'(?:Settlement|Selement)\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
+                r'I\.?\s*(?:Settlement|Selement)\s*Date[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})',
             ]:
                 m = re.search(pattern, all_text, re.IGNORECASE)
                 if m:
@@ -869,13 +881,21 @@ def parse_closing_disclosure(pdf_bytes):
                     date_found = True
                     break
             if not date_found:
-                # Try: "Settlement Date:\n07/09/2025" (date on next line)
-                m = re.search(r'Settlement\s*Date[:\s]*\n(\d{1,2}/\d{1,2}/\d{2,4})', all_text, re.IGNORECASE)
-                if m:
-                    result['closing_date'] = m.group(1).strip()
-                else:
+                # HUD-1 header layout: "I. Selement Date:" on one line, date on next line
+                # after the agent name: "New World Title Company, LLC  04/01/2026"
+                for pat in [
+                    r'(?:Settlement|Selement)\s*Date[:\s]*\n[^\n]*?(\d{1,2}/\d{1,2}/\d{4})',
+                    r'(?:Settlement|Selement)\s*Date[:\s]*\n(\d{1,2}/\d{1,2}/\d{2,4})',
+                    r'I\.?\s*(?:Settlement|Selement)\s*Date[:\s]*\n[^\n]*?(\d{1,2}/\d{1,2}/\d{4})',
+                ]:
+                    m = re.search(pat, all_text, re.IGNORECASE)
+                    if m:
+                        result['closing_date'] = m.group(1).strip()
+                        date_found = True
+                        break
+                if not date_found:
                     # Fallback: grab any date near Settlement Agent line
-                    m = re.search(r'Settlement\s*Agent.*?(\d{1,2}/\d{1,2}/\d{4})', all_text, re.IGNORECASE | re.DOTALL)
+                    m = re.search(r'(?:Settlement|Selement)\s*Agent.*?(\d{1,2}/\d{1,2}/\d{4})', all_text, re.IGNORECASE | re.DOTALL)
                     if m:
                         result['closing_date'] = m.group(1).strip()
 
@@ -907,6 +927,12 @@ def parse_closing_disclosure(pdf_bytes):
                 'less amounts paid', 'cash at settlement', 'cash from', 'cash to',
                 'reduction in amount', 'payoff', 'existing loan',
                 'settlement charges to seller',
+                'policy limit',        # lender/owner title policy limit — amount not a fee
+                'tle policy',          # stripped-ligature variant of 'title policy'
+                'total selement',      # line 1400 total (stripped ligature of 'settlement')
+                'poc by seller',       # paid outside closing by seller — not buyer's cost
+                'seller selement',     # seller settlement fee
+                'seller settlement',   # seller settlement fee
             ]
 
             seen_hud = {}
@@ -920,6 +946,33 @@ def parse_closing_disclosure(pdf_bytes):
 
                 if line_num not in hud_fee_sections:
                     continue
+
+                # Daily interest lines (901-904): regex captures the per-day rate
+                # e.g. "@ $62.64 /day $1,879.20" — grab the total after "/day" instead
+                if 901 <= line_num <= 904 and '@' in desc:
+                    remaining = all_text[match.end():]
+                    day_total = re.search(r'/day\s+\$?\s*([\d,]+\.\d{2})', remaining[:40])
+                    if day_total:
+                        try:
+                            amount = float(day_total.group(1).replace(',', ''))
+                        except ValueError:
+                            pass
+
+                # Some recording/tax lines show "$0.00" for one component but a non-zero
+                # total at the end: "Deed $0.00 Mortgage $15.78 ... $15.78"
+                # Scan ahead in the line for a non-zero amount when first capture is near-zero
+                if amount < 5:
+                    lookahead = all_text[match.start():match.start() + 300].split('\n')[0]
+                    all_amounts = re.findall(r'\$?\s*([\d,]+\.\d{2})', lookahead)
+                    for la in reversed(all_amounts):
+                        try:
+                            la_val = float(la.replace(',', ''))
+                            if la_val >= 5:
+                                amount = la_val
+                                break
+                        except ValueError:
+                            continue
+
                 if amount < 5 or amount > 50000:
                     continue
                 desc_lower = desc.lower()
