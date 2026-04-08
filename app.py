@@ -346,14 +346,24 @@ def calc_property_metrics(prop):
     commitment_fee = prop.get('commitment_fee', 0) or 0
     down_payment = prop.get('down_payment', 0) or 0
 
+    # Lender cash back — companion loan proceeds returned to borrower at/after closing
+    # (e.g. WCP 0%-down structure: buy CD requires $X, second loan gives back $Y net)
+    # Reduces total cash out of pocket. Stored on the property or auto-populated from
+    # the lender_cashback closing disclosure cash_to_close.
+    lender_cashback = prop.get('lender_cashback', 0) or 0
+    cd_lcb = prop.get('closing_disclosure_lender_cashback', {}) or {}
+    if cd_lcb.get('cash_to_close', 0) and not lender_cashback:
+        lender_cashback = cd_lcb['cash_to_close']
+
     # Compute cash_in_deal first — needs to happen before cash_invested fallback
     # When purchase_settlement is the CD cash-to-close, down_payment is already embedded in it.
     # EMD, commitment, and appraisal are typically paid OUTSIDE/BEFORE closing (not in CD cash-to-close),
     # so they are added separately. down_payment is NOT added to avoid double-counting.
+    # lender_cashback is subtracted — it is money received BACK from the lender, reducing net OOP.
     if purchase_settlement > 0:
-        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost + total_holding_from_expenses
+        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost + total_holding_from_expenses - lender_cashback
     else:
-        total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost + total_holding_from_expenses
+        total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost + total_holding_from_expenses - lender_cashback
     draw_surplus = max(total_draws - total_rehab, 0)
     draws_applied = min(total_draws, total_rehab)
     cash_in_deal = total_cash_oop - draws_applied - draw_surplus
@@ -480,13 +490,13 @@ def calc_property_metrics(prop):
         flags.append({'type': 'warning', 'msg': f'{days_held} days held (>180 benchmark)'})
 
     # Two-box breakdown for Cash Invested card
-    # Box 1: what was paid at/before the closing table
+    # Box 1: what was paid at/before the closing table (net of lender cashback)
     if purchase_settlement > 0:
-        pre_closing_cash = purchase_settlement + emd + commitment_fee + appraisal_fee
+        pre_closing_cash = purchase_settlement + emd + commitment_fee + appraisal_fee - lender_cashback
     elif cd_cash_to_close > 0:
-        pre_closing_cash = cd_cash_to_close
+        pre_closing_cash = cd_cash_to_close - lender_cashback
     else:
-        pre_closing_cash = emd + commitment_fee + appraisal_fee + down_payment
+        pre_closing_cash = emd + commitment_fee + appraisal_fee + down_payment - lender_cashback
     # Box 2: rehab + holding costs minus all lender draws received (net post-acquisition spend)
     post_acq_net = total_rehab + total_holding_cost - total_draws
 
@@ -525,6 +535,7 @@ def calc_property_metrics(prop):
         'distributable_profit': distributable_profit,
         'partner_share': partner_share, 'partner_total': partner_total,
         'draw_surplus': draw_surplus,
+        'lender_cashback': lender_cashback,
         'roi': roi, 'annualized_roi': annualized_roi, 'cash_on_cash': cash_on_cash,
         'mao': mao, 'mao_with_holding': mao_with_holding,
         'passes_70_rule': passes_70_rule, 'total_cost_to_arv': total_cost_to_arv,
@@ -546,6 +557,7 @@ def calc_pnl(prop, metrics):
     """
     cd_purchase = prop.get('closing_disclosure_purchase', {})
     cd_sale = prop.get('closing_disclosure_sale', {})
+    cd_lender_cashback = prop.get('closing_disclosure_lender_cashback', {})
 
     # ---- GROSS INCOME ----
     sale_price = prop.get('sale_price', 0) or metrics['effective_sale']
@@ -561,8 +573,13 @@ def calc_pnl(prop, metrics):
 
     # Acquisition closing costs — itemized from CD or lump sum
     if cd_purchase and cd_purchase.get('line_items'):
-        acq_closing_items = cd_purchase['line_items']
+        acq_closing_items = list(cd_purchase['line_items'])
         acq_closing_total = sum(item.get('amount', 0) for item in acq_closing_items)
+        # Also append lender cashback CD costs (2nd loan fees) to acquisition line items
+        if cd_lender_cashback and cd_lender_cashback.get('line_items'):
+            lcb_items = cd_lender_cashback['line_items']
+            acq_closing_items = acq_closing_items + lcb_items
+            acq_closing_total += sum(item.get('amount', 0) for item in lcb_items)
     else:
         # No CD uploaded — build explicit named items from manual sub-fields.
         # EMD, appraisal, and commitment are pre-closing costs entered separately
@@ -2612,7 +2629,7 @@ def upload_closing_disclosure(prop_id):
         return jsonify({'error': 'No file uploaded'}), 400
 
     file = request.files['file']
-    cd_type = request.form.get('type', 'purchase')  # 'purchase' or 'sale'
+    cd_type = request.form.get('type', 'purchase')  # 'purchase', 'sale', or 'lender_cashback'
     pdf_bytes = file.read()
 
     # Parse the PDF
@@ -2685,6 +2702,11 @@ def upload_closing_disclosure(prop_id):
             if parsed_date:
                 prop['sale_date'] = parsed_date
 
+    if cd_type == 'lender_cashback':
+        # Auto-populate lender_cashback amount from cash_to_close (money back to borrower)
+        if cd_data['cash_to_close'] > 0:
+            prop['lender_cashback'] = cd_data['cash_to_close']
+
     save_data(data)
 
     return jsonify({
@@ -2724,9 +2746,12 @@ def update_closing_disclosure(prop_id):
         prop[key]['interest_rate'] = body['interest_rate']
     if 'cash_to_close' in body and body['cash_to_close'] is not None:
         prop[key]['cash_to_close'] = float(body['cash_to_close'])
-        # Also sync purchase_settlement for purchase CDs so cash_in_deal recalculates
+        # Sync purchase_settlement for purchase CDs so cash_in_deal recalculates
         if cd_type == 'purchase':
             prop['purchase_settlement'] = float(body['cash_to_close'])
+        # Sync lender_cashback for lender cashback CDs
+        if cd_type == 'lender_cashback':
+            prop['lender_cashback'] = float(body['cash_to_close'])
     if 'loan_amount' in body and body['loan_amount'] is not None:
         prop[key]['loan_amount'] = float(body['loan_amount'])
 
@@ -2737,8 +2762,8 @@ def update_closing_disclosure(prop_id):
 @app.route('/api/flips/<prop_id>/closing-disclosure/<cd_type>', methods=['DELETE'])
 def delete_closing_disclosure(prop_id, cd_type):
     """Remove an uploaded closing disclosure (e.g. erroneous purchase CD on a subject-to deal)."""
-    if cd_type not in ('purchase', 'sale'):
-        return jsonify({'error': 'Invalid type — must be purchase or sale'}), 400
+    if cd_type not in ('purchase', 'sale', 'lender_cashback'):
+        return jsonify({'error': 'Invalid type — must be purchase, sale, or lender_cashback'}), 400
     data = load_data()
     prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
     if not prop:
@@ -2748,6 +2773,9 @@ def delete_closing_disclosure(prop_id, cd_type):
         del prop[key]
         # If this was a purchase CD that auto-populated purchase_settlement, leave
         # purchase_settlement as-is — the user will correct it manually if needed.
+        # If this was a lender cashback CD, clear the lender_cashback field too.
+        if cd_type == 'lender_cashback':
+            prop['lender_cashback'] = 0
         save_data(data)
     return jsonify({'success': True})
 

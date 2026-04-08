@@ -1162,11 +1162,16 @@
                     <p style="font-size:12px;color:var(--text-muted);margin:0;">Upload your Closing Disclosure PDFs to auto-extract itemized closing costs, sale price, and dates.</p>
                     <button class="btn btn-secondary btn-sm" id="cd-reprocess-btn" onclick="reprocessCDs()" style="white-space:nowrap;margin-left:12px;" title="Re-process already-uploaded CDs to fill in sale price, dates, and cash invested">↻ Re-process CDs</button>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="cd-uploads-grid">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;" id="cd-uploads-grid">
                     <div id="cd-purchase-zone" class="cd-upload-zone" onclick="initCdUpload('purchase')">
                         <div class="cd-zone-icon">📋</div>
                         <div class="cd-zone-label">Purchase Closing Disclosure</div>
                         <div class="cd-zone-status" id="cd-purchase-status">Click to upload PDF</div>
+                    </div>
+                    <div id="cd-lender-cashback-zone" class="cd-upload-zone" onclick="initCdUpload('lender_cashback')">
+                        <div class="cd-zone-icon">💰</div>
+                        <div class="cd-zone-label">Lender Cash Back CD</div>
+                        <div class="cd-zone-status" id="cd-lender-cashback-status">Click to upload PDF</div>
                     </div>
                     <div id="cd-sale-zone" class="cd-upload-zone" onclick="initCdUpload('sale')">
                         <div class="cd-zone-icon">📋</div>
@@ -3732,14 +3737,17 @@ function renderAnnualPnl(data) {
 function renderCdStatus(prop) {
     const cdP = prop.closing_disclosure_purchase;
     const cdS = prop.closing_disclosure_sale;
+    const cdLcb = prop.closing_disclosure_lender_cashback;
     const pZone = $('cd-purchase-zone');
     const sZone = $('cd-sale-zone');
+    const lcbZone = $('cd-lender-cashback-zone');
     if (!pZone || !sZone) return;
 
     // A CD is "uploaded" if it has line items OR a valid cash_to_close/loan_amount
     // (HUD-1 forms may parse 0 line items but still have correct summary numbers)
     const pUploaded = cdP && (cdP.cash_to_close > 0 || cdP.loan_amount > 0 || (cdP.line_items && cdP.line_items.length > 0));
     const sUploaded = cdS && (cdS.cash_to_close > 0 || (cdS.line_items && cdS.line_items.length > 0));
+    const lcbUploaded = cdLcb && (cdLcb.cash_to_close > 0 || (cdLcb.line_items && cdLcb.line_items.length > 0));
 
     if (pUploaded) {
         pZone.classList.add('uploaded');
@@ -3751,6 +3759,20 @@ function renderCdStatus(prop) {
         pZone.classList.remove('uploaded');
         pZone.onclick = () => initCdUpload('purchase');
         $('cd-purchase-status').textContent = 'Click to upload PDF';
+    }
+
+    if (lcbZone) {
+        if (lcbUploaded) {
+            lcbZone.classList.add('uploaded');
+            lcbZone.onclick = (e) => { if (!e.target.closest('.cd-remove-btn')) initCdUpload('lender_cashback'); };
+            const lcbItems = (cdLcb.line_items || []).length;
+            const lcbSummary = lcbItems > 0 ? `${lcbItems} items` : `Cash Back: $${(cdLcb.cash_to_close||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+            $('cd-lender-cashback-status').innerHTML = `✅ ${cdLcb.filename || 'Uploaded'} (${cdLcb.upload_date||''}) — ${lcbSummary}<br><span style="color:var(--accent);font-size:10px">Click to re-upload</span><br><button class="cd-remove-btn btn btn-sm" style="margin-top:6px;background:rgba(239,83,80,0.15);color:var(--red);border:1px solid rgba(239,83,80,0.4);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="event.stopPropagation();removeCD('lender_cashback')">🗑 Remove CD</button>`;
+        } else {
+            lcbZone.classList.remove('uploaded');
+            lcbZone.onclick = () => initCdUpload('lender_cashback');
+            $('cd-lender-cashback-status').textContent = 'Click to upload PDF';
+        }
     }
 
     if (sUploaded) {
@@ -3769,7 +3791,7 @@ function renderCdStatus(prop) {
 async function removeCD(type) {
     const prop = getSelectedProperty('tax-selector');
     if (!prop) return;
-    const label = type === 'purchase' ? 'Purchase' : 'Sale';
+    const label = type === 'purchase' ? 'Purchase' : type === 'sale' ? 'Sale' : 'Lender Cash Back';
     if (!confirm(`Remove the ${label} Closing Disclosure for ${prop.address}?\n\nThis will clear the uploaded CD and revert to manual figures. This cannot be undone.`)) return;
     const res = await apiFetch(`/api/flips/${prop.id}/closing-disclosure/${type}`, { method: 'DELETE' });
     if (res && res.ok) {
@@ -3838,7 +3860,8 @@ function initCdUpload(type) {
 }
 
 function showCdReviewModal(data, type) {
-    $('cd-review-title').textContent = `Review ${type === 'purchase' ? 'Purchase' : 'Sale'} Closing Disclosure`;
+    const typeLabel = type === 'purchase' ? 'Purchase' : type === 'sale' ? 'Sale' : 'Lender Cash Back';
+    $('cd-review-title').textContent = `Review ${typeLabel} Closing Disclosure`;
     const effectiveRate = data.interest_rate > 0 ? data.interest_rate : 11;
     const isSale = type === 'sale';
     _cdReviewData.loan_amount = data.loan_amount || 0;
@@ -3859,6 +3882,23 @@ function showCdReviewModal(data, type) {
                 </div>
             </div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Commissions are tracked separately in your P&L — remove commission line items below if present.</div>`;
+    } else if (type === 'lender_cashback') {
+        $('cd-review-summary').innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                <div class="stat-card" style="padding:8px">
+                    <div class="stat-label" style="font-size:10px">2nd Loan Amount</div>
+                    <input type="number" id="cd-review-loan" value="${data.loan_amount || 0}" step="0.01" style="${inputStyle}">
+                </div>
+                <div class="stat-card" style="padding:8px">
+                    <div class="stat-label" style="font-size:10px">Fees on 2nd Loan</div>
+                    <div style="font-weight:700;color:var(--red)">${fmt(data.closing_costs_total || 0)}</div>
+                </div>
+                <div class="stat-card" style="padding:8px">
+                    <div class="stat-label" style="font-size:10px">Cash Back to You (Line 303)</div>
+                    <input type="number" id="cd-review-cash" value="${data.cash_to_close || 0}" step="0.01" style="${inputStyle}color:var(--green);">
+                </div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">💰 The <strong>Cash Back to You</strong> amount reduces your cash-in-deal. Line items below are added to your Tax P&amp;L as 2nd loan acquisition costs.</div>`;
     } else {
         $('cd-review-summary').innerHTML = `
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
