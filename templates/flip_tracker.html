@@ -1492,7 +1492,7 @@
                 <div class="form-group"><label>Sale Price (if sold)</label><input type="number" id="ep-saleprice" step="0.01"></div>
                 <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="ep-acqclosing" step="0.01"></div>
                 <div class="form-group"><label>Purchase Settlement (w/ down payment)</label><input type="number" id="ep-settlement" step="0.01"></div>
-                <div class="form-group"><label>EMD <span id="ep-emd-hint" style="font-size:10px;color:var(--yellow);font-weight:400;display:none">⚠️ Leave $0 if uploading a Purchase CD — EMD is already inside the line 303 number</span></label><input type="number" id="ep-emd" step="0.01" oninput="showEmdHint()"></div>
+                <div class="form-group"><label>EMD <span style="font-size:10px;color:var(--text-muted);font-weight:400;">— enter if paid separately before closing</span></label><input type="number" id="ep-emd" step="0.01"></div>
                 <div class="form-group"><label>Appraisal Fee</label><input type="number" id="ep-appraisal" step="0.01"></div>
                 <div class="form-group"><label>Down Payment</label><input type="number" id="ep-downpayment" step="0.01" placeholder="0 for hard money"></div>
                 <div class="form-group"><label>Commitment Fee</label><input type="number" id="ep-commitment" step="0.01" placeholder="Lender commitment fee"></div>
@@ -1754,7 +1754,6 @@ function showEditProperty() {
     $('ep-acqclosing').value = prop.acq_closing_cost || '';
     $('ep-settlement').value = prop.purchase_settlement || '';
     $('ep-emd').value = prop.emd || '';
-    showEmdHint();
     $('ep-appraisal').value = prop.appraisal_fee || '';
     $('ep-downpayment').value = prop.down_payment || '';
     $('ep-commitment').value = prop.commitment_fee || '';
@@ -4057,16 +4056,6 @@ function autoCalcNpMortgage() {
     }
 }
 
-function showEmdHint() {
-    // Show warning if EMD field has a value AND a purchase CD is already uploaded
-    const prop = getSelected();
-    const hint = $('ep-emd-hint');
-    if (!hint) return;
-    const hasCd = prop && prop.closing_disclosure_purchase &&
-        (prop.closing_disclosure_purchase.cash_to_close > 0 || prop.closing_disclosure_purchase.loan_amount > 0);
-    const emdVal = +($('ep-emd') ? $('ep-emd').value : 0) || 0;
-    hint.style.display = (hasCd && emdVal > 0) ? 'inline' : 'none';
-}
 
 function autoCalcEpMortgage() {
     const purchase = +($('ep-purchase') ? $('ep-purchase').value : 0) || 0;
