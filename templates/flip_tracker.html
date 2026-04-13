@@ -2290,7 +2290,8 @@ function renderCompletedDeals() {
 
 // ---- PORTFOLIO TAB ----
 function renderPortfolio() {
-    const props = flipData.properties;
+    // Closed deals live in the Completed Deals tab — exclude them from active portfolio
+    const props = (flipData.properties || []).filter(p => p.metrics && p.metrics.status !== 'closed');
     const allMetrics = props.map(p => p.metrics);
 
     const totalInvested = allMetrics.reduce((s,m) => s + m.cash_in_deal, 0);
@@ -2298,11 +2299,11 @@ function renderPortfolio() {
     const totalRehab = allMetrics.reduce((s,m) => s + m.total_rehab, 0);
     const active = allMetrics.filter(m => m.status === 'active' || m.status === 'listed' || m.status === 'renovation').length;
     const sold = allMetrics.filter(m => m.status === 'sold').length;
-    const closed = allMetrics.filter(m => m.status === 'closed').length;
+    const closedCount = (flipData.properties || []).filter(p => p.metrics && p.metrics.status === 'closed').length;
     const avgROI = totalInvested > 0 ? (totalProfit / totalInvested * 100) : 0;
 
     $('portfolio-stats').innerHTML = `
-        <div class="stat-card highlight"><div class="stat-label">Properties</div><div class="stat-value">${props.length}</div><div class="stat-sub">${active} active · ${sold} sold · ${closed} closed</div></div>
+        <div class="stat-card highlight"><div class="stat-label">Active Properties</div><div class="stat-value">${props.length}</div><div class="stat-sub">${active} active · ${sold} sold · <span style="cursor:pointer;text-decoration:underline;" onclick="switchTab('completed')">${closedCount} closed ↗</span></div></div>
         <div class="stat-card ${totalProfit >= 0 ? 'green' : 'red'}"><div class="stat-label">Est. Total Profit</div><div class="stat-value">${fmt(totalProfit)}</div></div>
         <div class="stat-card"><div class="stat-label">Cash Invested</div><div class="stat-value">${fmt(totalInvested)}</div></div>
         <div class="stat-card"><div class="stat-label">Total Rehab</div><div class="stat-value">${fmt(totalRehab)}</div></div>
