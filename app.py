@@ -1854,6 +1854,8 @@ def add_prospect():
         # Update existing prospect with new scenario numbers
         data['prospects'][existing].update(p)
         data['prospects'][existing]['last_analyzed'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+        # Bump date_added to today so re-analyzed deal floats to #1 in pipeline
+        data['prospects'][existing]['date_added'] = datetime.now().strftime('%Y-%m-%d')
         save_data(data)
         settings = data.get('prospect_settings', _default_prospect_settings())
         metrics = calc_prospect_metrics(data['prospects'][existing], settings)

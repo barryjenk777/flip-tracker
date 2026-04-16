@@ -1393,6 +1393,19 @@
                     <div class="card-title" style="margin-bottom:0;">Deal Pipeline</div>
                     <button class="view-toggle-btn" id="view-toggle-btn" onclick="togglePipelineView()">📋 List View</button>
                 </div>
+
+                <!-- Archive Search -->
+                <div style="position:relative;margin-bottom:10px;">
+                    <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;">🔍</span>
+                    <input type="text" id="archive-search-input" placeholder="Search all deals by address…"
+                        oninput="renderArchiveResults()"
+                        onfocus="$('archive-results').style.display=''"
+                        onblur="setTimeout(()=>{ if($('archive-results')) $('archive-results').style.display='none'; }, 200)"
+                        style="width:100%;padding:9px 10px 9px 34px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;box-sizing:border-box;">
+                    <div id="archive-results" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;z-index:100;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);"></div>
+                </div>
+                <div id="pipeline-archive-note" style="margin-bottom:6px;"></div>
+
                 <div id="pipeline-stats" class="pipeline-stats-bar"></div>
                 <div id="pipeline-filters" class="pipeline-filters-bar"></div>
                 <div class="pipeline-board" id="prospect-pipeline"></div>
@@ -4666,15 +4679,29 @@ function clearPipelineFilters() {
     renderProspectHistory();
 }
 
+const PIPELINE_LIMIT = 10;
+let _pipelineArchiveCount = 0;
+
 function getFilteredProspects() {
+    const TERMINAL = new Set(['passed', 'converted']);
     let list = [...prospectData.prospects];
-    if (pipelineFilters.verdicts.size > 0) {
-        list = list.filter(p => pipelineFilters.verdicts.has(p.metrics.flip_verdict));
-    }
-    if (pipelineFilters.source) {
-        list = list.filter(p => p.source === pipelineFilters.source);
-    }
-    return list;
+
+    // Apply active filter chips
+    if (pipelineFilters.verdicts.size > 0) list = list.filter(p => pipelineFilters.verdicts.has(p.metrics.flip_verdict));
+    if (pipelineFilters.source) list = list.filter(p => p.source === pipelineFilters.source);
+
+    const terminal = list.filter(p => TERMINAL.has(p.stage));
+    let active    = list.filter(p => !TERMINAL.has(p.stage));
+
+    // Sort active newest first
+    active.sort((a, b) => (b.date_added || '').localeCompare(a.date_added || ''));
+
+    // Limit active pipeline to PIPELINE_LIMIT unless a filter is active
+    const filtering = pipelineFilters.verdicts.size > 0 || pipelineFilters.source;
+    _pipelineArchiveCount = filtering ? 0 : Math.max(0, active.length - PIPELINE_LIMIT);
+    if (!filtering) active = active.slice(0, PIPELINE_LIMIT);
+
+    return [...active, ...terminal];
 }
 
 function getDaysAgo(dateStr) {
@@ -4733,6 +4760,14 @@ function renderPipeline() {
         renderPipelineListView(board, filtered);
     } else {
         renderPipelineBoardView(board, filtered);
+    }
+
+    // Archive count note
+    const archiveNote = $('pipeline-archive-note');
+    if (archiveNote) {
+        archiveNote.innerHTML = _pipelineArchiveCount > 0
+            ? `<span style="font-size:11px;color:var(--text-muted);">Showing 10 most recent · <span style="cursor:pointer;color:var(--accent);text-decoration:underline;" onclick="focusArchiveSearch()">${_pipelineArchiveCount} more in archive ↑</span></span>`
+            : '';
     }
 
     // Populate history filter dropdowns
@@ -5032,6 +5067,71 @@ function renderProspectHistory() {
             </tr>`;
         }).join('')}</tbody>
     </table>`;
+}
+
+/* ── Archive Search ─────────────────────────────────────────────── */
+function focusArchiveSearch() {
+    const el = $('archive-search-input');
+    if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+}
+
+function renderArchiveResults() {
+    const input = $('archive-search-input');
+    const box   = $('archive-results');
+    if (!input || !box) return;
+    const q = (input.value || '').trim().toLowerCase();
+    box.style.display = '';
+
+    if (!q) {
+        box.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--text-muted);">${prospectData.prospects.length} deals in archive — start typing to search</div>`;
+        return;
+    }
+
+    const matches = prospectData.prospects.filter(p =>
+        (p.address || '').toLowerCase().includes(q) ||
+        (p.city    || '').toLowerCase().includes(q)
+    ).sort((a, b) => (b.date_added || '').localeCompare(a.date_added || '')).slice(0, 15);
+
+    if (!matches.length) {
+        box.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--text-muted);">No deals found for "${q}"</div>`;
+        return;
+    }
+
+    const STAGE_LABEL = {};
+    (window.STAGES || []).forEach(s => { STAGE_LABEL[s.id] = s.label; });
+
+    box.innerHTML = matches.map(p => {
+        const m = p.metrics || {};
+        const verdict = (m.flip_verdict || 'FAIL').toLowerCase();
+        const verdictColor = verdict === 'pass' ? 'var(--green)' : verdict === 'borderline' ? 'var(--yellow)' : 'var(--red)';
+        const stageLabel = STAGE_LABEL[p.stage] || p.stage || '';
+        return `<div onmousedown="loadArchiveDeal('${p.id}')"
+            style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);gap:10px;"
+            onmouseover="this.style.background='var(--bg-primary)'" onmouseout="this.style.background=''">
+            <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text-primary);">${p.address}</div>
+                <div style="font-size:10px;color:var(--text-muted);">${p.city || ''}${p.city ? ', ' : ''}${p.state || ''} · ${p.date_added || ''} · ${stageLabel}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:11px;font-weight:800;color:${verdictColor};">${m.flip_verdict || '—'}</div>
+                <div style="font-size:10px;color:var(--text-muted);">${m.gross_profit != null ? fmt(m.gross_profit) : ''}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function loadArchiveDeal(id) {
+    const p = prospectData.prospects.find(x => x.id === id);
+    if (!p) return;
+    // Switch to prospect analyzer mode
+    switchDealMode('prospect');
+    // Clear search input
+    const input = $('archive-search-input');
+    if (input) input.value = '';
+    const box = $('archive-results');
+    if (box) box.style.display = 'none';
+    // Load into form
+    showProspectDetail(id);
 }
 
 function toggleProspectSort(field) {
