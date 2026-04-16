@@ -1206,6 +1206,103 @@
 
         <!-- ===== DEAL ANALYZER TAB (mirrors partner's P&L Worksheet) ===== -->
         <div class="tab-content" id="tab-prospects">
+
+            <!-- ── Mode Toggle ───────────────────────────────────────── -->
+            <div style="display:flex;gap:0;margin-bottom:16px;background:var(--bg-secondary);border-radius:10px;padding:4px;border:1px solid var(--border);">
+                <button id="deal-mode-offer" onclick="switchDealMode('offer')"
+                    style="flex:1;padding:10px;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;background:var(--accent);color:#fff;">
+                    🏷️ Offer Calculator
+                </button>
+                <button id="deal-mode-prospect" onclick="switchDealMode('prospect')"
+                    style="flex:1;padding:10px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;background:transparent;color:var(--text-secondary);">
+                    🔍 Prospect Analyzer
+                </button>
+            </div>
+
+            <!-- ── OFFER CALCULATOR ──────────────────────────────────── -->
+            <div id="panel-offer">
+                <div class="card" style="border:1px solid var(--accent);">
+                    <div style="font-size:18px;font-weight:800;color:var(--accent);margin-bottom:4px;">🏷️ Offer Calculator</div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:20px;">Got an offer? Enter it below to instantly see your net.</div>
+
+                    <!-- Property Picker -->
+                    <div style="margin-bottom:16px;">
+                        <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:6px;">Property</label>
+                        <select id="oc-property" onchange="ocPropertyChanged()"
+                            style="width:100%;padding:12px 14px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:14px;font-weight:600;appearance:none;-webkit-appearance:none;cursor:pointer;">
+                            <option value="">— Select a property —</option>
+                        </select>
+                    </div>
+
+                    <!-- Offer Price Input -->
+                    <div style="margin-bottom:20px;">
+                        <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:6px;">Offer Price</label>
+                        <div style="position:relative;">
+                            <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:22px;font-weight:700;color:var(--text-secondary);">$</span>
+                            <input type="number" id="oc-offer-price" oninput="calcOfferNet()"
+                                placeholder="0"
+                                style="width:100%;padding:14px 14px 14px 34px;background:var(--bg-primary);border:2px solid var(--accent);border-radius:8px;color:var(--text-primary);font-size:28px;font-weight:800;box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <!-- Concessions toggle row -->
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                        <div style="flex:1;">
+                            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:6px;">Seller Concessions</label>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;font-weight:700;color:var(--text-secondary);">$</span>
+                                <input type="number" id="oc-concessions" oninput="calcOfferNet()" placeholder="0"
+                                    style="width:100%;padding:10px 10px 10px 26px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:16px;font-weight:600;box-sizing:border-box;">
+                            </div>
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:6px;">Extra Holding Months</label>
+                            <input type="number" id="oc-extra-months" oninput="calcOfferNet()" placeholder="0" min="0"
+                                style="width:100%;padding:10px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:16px;font-weight:600;box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <!-- RESULTS -->
+                    <div id="oc-results" style="display:none;">
+                        <!-- Deal Net — hero number -->
+                        <div id="oc-net-card" style="border-radius:10px;padding:18px 20px;margin-bottom:12px;text-align:center;">
+                            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px;opacity:0.75;">Deal Net Profit</div>
+                            <div id="oc-net-value" style="font-size:44px;font-weight:900;line-height:1;"></div>
+                        </div>
+
+                        <!-- Barry / Chris checks -->
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+                            <div style="background:rgba(79,195,247,0.12);border:2px solid var(--accent);border-radius:10px;padding:14px;text-align:center;">
+                                <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--accent);margin-bottom:6px;">Barry</div>
+                                <div id="oc-barry-check" style="font-size:26px;font-weight:900;color:var(--accent);"></div>
+                                <div id="oc-barry-detail" style="font-size:10px;color:var(--text-muted);margin-top:4px;"></div>
+                            </div>
+                            <div style="background:rgba(102,187,106,0.1);border:2px solid rgba(102,187,106,0.5);border-radius:10px;padding:14px;text-align:center;">
+                                <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--green);margin-bottom:6px;">Chris</div>
+                                <div id="oc-chris-check" style="font-size:26px;font-weight:900;color:var(--green);"></div>
+                                <div id="oc-chris-detail" style="font-size:10px;color:var(--text-muted);margin-top:4px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Cost Breakdown toggle -->
+                        <div onclick="toggleOcBreakdown()" style="display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;padding:8px;color:var(--text-secondary);font-size:12px;font-weight:600;">
+                            <span id="oc-breakdown-arrow" style="transition:transform .2s;">▶</span>
+                            <span>Show cost breakdown</span>
+                        </div>
+                        <div id="oc-breakdown" style="display:none;margin-top:8px;background:var(--bg-primary);border-radius:8px;padding:14px;font-size:13px;">
+                            <div id="oc-breakdown-rows"></div>
+                        </div>
+                    </div>
+
+                    <!-- Empty state -->
+                    <div id="oc-empty" style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">
+                        Select a property and enter an offer price to see your net.
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── PROSPECT ANALYZER (existing content) ─────────────── -->
+            <div id="panel-prospect" style="display:none;">
             <div class="card">
                 <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;font-style:italic;">This Profit & Loss analyzer is intended to be a very simple and quick tool when analyzing the ROI on a potential fix and flip property.</div>
 
@@ -1325,6 +1422,7 @@
                 </div>
                 <div style="overflow-x:auto;" id="prospect-history"></div>
             </div>
+            </div><!-- /panel-prospect -->
         </div>
     </div>
 
@@ -1699,7 +1797,8 @@ function switchTab(name) {
     const btn = $('header-ctx-btn');
     if (name === 'prospects') {
         btn.textContent = '+ Analyze Deal';
-        btn.onclick = () => { $('qa-address').focus(); };
+        btn.onclick = () => { switchDealMode('prospect'); $('qa-address') && $('qa-address').focus(); };
+        populateOcPropertyPicker();
     } else if (name === 'command') {
         btn.textContent = 'Refresh';
         btn.onclick = () => loadCommandCenter();
@@ -4068,6 +4167,163 @@ function autoCalcEpMortgage() {
         if ($('ep-mortgage')) $('ep-mortgage').value = Math.round(monthly);
         if ($('ep-hm-auto')) $('ep-hm-auto').textContent = `(${rate}% on ${fmt(loanBasis)})`;
     }
+}
+
+/* ── Offer Calculator ────────────────────────────────────────────── */
+function switchDealMode(mode) {
+    const offerBtn     = $('deal-mode-offer');
+    const prospectBtn  = $('deal-mode-prospect');
+    const offerPanel   = $('panel-offer');
+    const prospectPanel = $('panel-prospect');
+    if (mode === 'offer') {
+        offerPanel.style.display    = '';
+        prospectPanel.style.display = 'none';
+        offerBtn.style.background   = 'var(--accent)';
+        offerBtn.style.color        = '#fff';
+        offerBtn.style.fontWeight   = '700';
+        prospectBtn.style.background = 'transparent';
+        prospectBtn.style.color      = 'var(--text-secondary)';
+        prospectBtn.style.fontWeight = '600';
+        populateOcPropertyPicker();
+    } else {
+        offerPanel.style.display    = 'none';
+        prospectPanel.style.display = '';
+        prospectBtn.style.background = 'var(--accent)';
+        prospectBtn.style.color      = '#fff';
+        prospectBtn.style.fontWeight = '700';
+        offerBtn.style.background    = 'transparent';
+        offerBtn.style.color         = 'var(--text-secondary)';
+        offerBtn.style.fontWeight    = '600';
+    }
+}
+
+function populateOcPropertyPicker() {
+    const sel = $('oc-property');
+    if (!sel) return;
+    const active = (flipData.properties || []).filter(p =>
+        p.metrics && ['active','listed','renovation'].includes(p.metrics.status)
+    );
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— Select a property —</option>' +
+        active.map(p => `<option value="${p.id}">${p.address}</option>`).join('');
+    if (current) sel.value = current;
+    // Auto-select if only one property
+    if (!sel.value && active.length === 1) {
+        sel.value = active[0].id;
+        ocPropertyChanged();
+    }
+}
+
+function ocPropertyChanged() {
+    calcOfferNet();
+}
+
+function calcOfferNet() {
+    const propId    = $('oc-property') ? $('oc-property').value : '';
+    const offerRaw  = $('oc-offer-price') ? +$('oc-offer-price').value : 0;
+    const concessions = $('oc-concessions') ? +$('oc-concessions').value || 0 : 0;
+    const extraMonths = $('oc-extra-months') ? +$('oc-extra-months').value || 0 : 0;
+
+    const results = $('oc-results');
+    const empty   = $('oc-empty');
+
+    if (!propId || !offerRaw) {
+        if (results) results.style.display = 'none';
+        if (empty)   empty.style.display   = '';
+        return;
+    }
+
+    const prop = (flipData.properties || []).find(p => p.id === propId);
+    if (!prop || !prop.metrics) return;
+    const m = prop.metrics;
+
+    const offerPrice   = offerRaw;
+    const commissionPct = (m.sale_commission_pct || 4) / 100;
+    const closingPct    = (m.sale_closing_cost_pct || 1.5) / 100;
+    const commission    = offerPrice * commissionPct;
+    const saleClosing   = offerPrice * closingPct;
+    const monthlyHolding = m.total_holding_cost && m.hold_months > 0
+        ? m.total_holding_cost / Math.max(m.hold_months, 1)
+        : 0;
+    const extraHolding  = monthlyHolding * extraMonths;
+
+    // What we've already spent (costs already incurred)
+    const totalCosts = (m.purchase_price || 0)
+        + (m.acq_closing_cost || 0)
+        + (m.total_rehab || 0)
+        + (m.total_holding_cost || 0)
+        + (m.total_holding_from_expenses || 0);
+
+    const sellingCosts  = commission + saleClosing + concessions + extraHolding;
+    const dealNet       = offerPrice - totalCosts - sellingCosts;
+
+    // Capital return + split
+    const cashInvested  = m.cash_in_deal || 0;
+    const splitPct      = (prop.partner_split_pct || 50) / 100;
+    const distributable = dealNet - cashInvested;
+    const barryShare    = distributable > 0 ? distributable * splitPct : dealNet * splitPct;
+    const chrisShare    = distributable > 0 ? distributable * (1 - splitPct) : dealNet * (1 - splitPct);
+    const barryTotal    = cashInvested > 0 ? cashInvested + barryShare : dealNet * splitPct;
+    const chrisTotal    = chrisShare;
+
+    // Render
+    if (results) results.style.display = '';
+    if (empty)   empty.style.display   = 'none';
+
+    const netCard = $('oc-net-card');
+    const netVal  = $('oc-net-value');
+    if (netCard && netVal) {
+        const color = dealNet >= 30000 ? 'var(--green)' : dealNet >= 10000 ? 'var(--yellow)' : 'var(--red)';
+        netCard.style.background = dealNet >= 30000
+            ? 'rgba(102,187,106,0.12)' : dealNet >= 10000
+            ? 'rgba(255,167,38,0.12)' : 'rgba(239,83,80,0.12)';
+        netCard.style.border = `1px solid ${color}`;
+        netVal.style.color   = color;
+        netVal.textContent   = (dealNet >= 0 ? '+' : '') + fmt(dealNet);
+    }
+
+    const barryCheckEl  = $('oc-barry-check');
+    const barryDetailEl = $('oc-barry-detail');
+    const chrisCheckEl  = $('oc-chris-check');
+    const chrisDetailEl = $('oc-chris-detail');
+
+    if (barryCheckEl)  barryCheckEl.textContent  = (barryTotal >= 0 ? '+' : '') + fmt(barryTotal);
+    if (barryDetailEl) barryDetailEl.textContent  = cashInvested > 0
+        ? `${fmt(cashInvested)} back + ${fmt(barryShare)} profit` : `${Math.round(splitPct*100)}% of profit`;
+    if (chrisCheckEl)  chrisCheckEl.textContent  = (chrisTotal >= 0 ? '+' : '') + fmt(chrisTotal);
+    if (chrisDetailEl) chrisDetailEl.textContent = `${Math.round((1-splitPct)*100)}% of profit`;
+
+    // Breakdown rows
+    const rows = $('oc-breakdown-rows');
+    if (rows) {
+        const line = (label, val, color) =>
+            `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;">
+                <span style="color:var(--text-secondary);">${label}</span>
+                <span style="font-weight:600;color:${color||'var(--text-primary)'};">${val}</span>
+            </div>`;
+        rows.innerHTML =
+            line('Offer Price', '+' + fmt(offerPrice), 'var(--accent)') +
+            line('Purchase + Acq. Closing', '-' + fmt((m.purchase_price||0) + (m.acq_closing_cost||0))) +
+            line('Rehab', '-' + fmt(m.total_rehab||0)) +
+            line('Holding Costs (to date)', '-' + fmt((m.total_holding_cost||0) + (m.total_holding_from_expenses||0))) +
+            (extraHolding > 0 ? line(`Extra Holding (${extraMonths} mo)`, '-' + fmt(extraHolding)) : '') +
+            line(`Commission (${(commissionPct*100).toFixed(1)}%)`, '-' + fmt(commission)) +
+            line(`Sale Closing (${(closingPct*100).toFixed(1)}%)`, '-' + fmt(saleClosing)) +
+            (concessions > 0 ? line('Concessions', '-' + fmt(concessions)) : '') +
+            `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:800;">
+                <span>Deal Net</span>
+                <span style="color:${dealNet>=0?'var(--green)':'var(--red)'};">${dealNet>=0?'+':''}${fmt(dealNet)}</span>
+            </div>`;
+    }
+}
+
+function toggleOcBreakdown() {
+    const bd  = $('oc-breakdown');
+    const arr = $('oc-breakdown-arrow');
+    if (!bd) return;
+    const open = bd.style.display !== 'none';
+    bd.style.display  = open ? 'none' : '';
+    if (arr) arr.style.transform = open ? '' : 'rotate(90deg)';
 }
 
 async function analyzeProspect() {
