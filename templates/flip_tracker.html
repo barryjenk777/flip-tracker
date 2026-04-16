@@ -1773,7 +1773,9 @@ async function loadFlips() {
         const data = await res.json();
         flipData = data;
         if (data.properties.length > 0 && !selectedPropertyId) {
-            selectedPropertyId = data.properties[0].id;
+            // Default to first non-closed property; fall back to first if all closed
+            const firstActive = data.properties.find(p => p.status !== 'closed' && !(p.metrics && p.metrics.status === 'closed'));
+            selectedPropertyId = (firstActive || data.properties[0]).id;
         }
         renderAll();
     } catch(e) {
@@ -2133,12 +2135,38 @@ async function submitMortgage() {
 }
 
 // ---- Property Selector ----
+// Track whether each selector container is showing closed deals
+const _selectorShowClosed = {};
+
 function renderPropertySelector(containerId) {
     const c = $(containerId);
+    if (!c) return;
     if (!flipData.properties.length) { c.innerHTML = '<div style="color:var(--text-muted)">No properties yet. Add one to get started.</div>'; return; }
-    c.innerHTML = '<select style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 16px;color:var(--text-primary);font-size:14px;font-weight:600;" onchange="selectedPropertyId=this.value;renderAll()">' +
-        flipData.properties.map(p => `<option value="${p.id}" ${p.id===selectedPropertyId?'selected':''}>${p.address} — ${p.city}, ${p.state}</option>`).join('') +
-    '</select>';
+
+    const showClosed = !!_selectorShowClosed[containerId];
+    const allProps   = flipData.properties;
+    const active     = allProps.filter(p => !(p.metrics && p.metrics.status === 'closed'));
+    const closed     = allProps.filter(p =>  (p.metrics && p.metrics.status === 'closed'));
+    const visible    = showClosed ? allProps : active;
+
+    // If selected property is closed and we're hiding closed, switch to first active
+    const selProp = allProps.find(p => p.id === selectedPropertyId);
+    if (selProp && selProp.metrics && selProp.metrics.status === 'closed' && !showClosed) {
+        selectedPropertyId = (active[0] || allProps[0]).id;
+    }
+
+    const selectHtml = `<select style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 16px;color:var(--text-primary);font-size:14px;font-weight:600;" onchange="selectedPropertyId=this.value;renderAll()">` +
+        visible.map(p => {
+            const isClosed = p.metrics && p.metrics.status === 'closed';
+            return `<option value="${p.id}" ${p.id===selectedPropertyId?'selected':''} ${isClosed?'style="color:var(--text-muted)"':''}>${p.address} — ${p.city}, ${p.state}${isClosed?' (closed)':''}</option>`;
+        }).join('') +
+    `</select>`;
+
+    const toggleHtml = closed.length > 0
+        ? `<span onclick="_selectorShowClosed['${containerId}']=!_selectorShowClosed['${containerId}'];renderAll()" style="font-size:11px;color:var(--text-muted);cursor:pointer;margin-left:10px;text-decoration:underline;">${showClosed ? 'Hide closed' : `+ ${closed.length} closed`}</span>`
+        : '';
+
+    c.innerHTML = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${selectHtml}${toggleHtml}</div>`;
 }
 
 // ---- Render ----
