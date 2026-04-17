@@ -1209,18 +1209,18 @@
 
             <!-- ── Mode Toggle ───────────────────────────────────────── -->
             <div style="display:flex;gap:0;margin-bottom:16px;background:var(--bg-secondary);border-radius:10px;padding:4px;border:1px solid var(--border);">
-                <button id="deal-mode-offer" onclick="switchDealMode('offer')"
-                    style="flex:1;padding:10px;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;background:var(--accent);color:#fff;">
-                    🏷️ Offer Calculator
-                </button>
                 <button id="deal-mode-prospect" onclick="switchDealMode('prospect')"
-                    style="flex:1;padding:10px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;background:transparent;color:var(--text-secondary);">
+                    style="flex:1;padding:10px;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;background:var(--accent);color:#fff;">
                     🔍 Prospect Analyzer
+                </button>
+                <button id="deal-mode-offer" onclick="switchDealMode('offer')"
+                    style="flex:1;padding:10px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;background:transparent;color:var(--text-secondary);">
+                    🏷️ Offer Calculator
                 </button>
             </div>
 
             <!-- ── OFFER CALCULATOR ──────────────────────────────────── -->
-            <div id="panel-offer">
+            <div id="panel-offer" style="display:none;">
                 <div class="card" style="border:1px solid var(--accent);">
                     <div style="font-size:18px;font-weight:800;color:var(--accent);margin-bottom:4px;">🏷️ Offer Calculator</div>
                     <div style="font-size:12px;color:var(--text-secondary);margin-bottom:20px;">Got an offer? Enter it below to instantly see your net.</div>
@@ -1302,7 +1302,7 @@
             </div>
 
             <!-- ── PROSPECT ANALYZER (existing content) ─────────────── -->
-            <div id="panel-prospect" style="display:none;">
+            <div id="panel-prospect" style="display:">
             <div class="card">
                 <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;font-style:italic;">This Profit & Loss analyzer is intended to be a very simple and quick tool when analyzing the ROI on a potential fix and flip property.</div>
 
@@ -4423,6 +4423,28 @@ function clearAnalyzerForm() {
     }
 }
 
+// Inline-edit helper: small input that syncs to a form field and re-analyzes
+function ie(qaId, value, opts = {}) {
+    const step  = opts.step  || 1;
+    const style = opts.style || '';
+    const suffix = opts.suffix || '';
+    return `<span style="display:inline-flex;align-items:center;gap:2px;">
+        <input type="number" step="${step}" value="${value}"
+            style="width:90px;padding:3px 6px;background:var(--bg-primary);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:13px;font-weight:600;text-align:right;${style}"
+            oninput="prospectInlineSync('${qaId}',this.value)"
+            onclick="this.select()">
+        ${suffix ? `<span style="font-size:11px;color:var(--text-muted);">${suffix}</span>` : ''}
+    </span>`;
+}
+
+let _prospectRecalcTimer = null;
+function prospectInlineSync(qaId, val) {
+    const field = $(qaId);
+    if (field) field.value = val;
+    clearTimeout(_prospectRecalcTimer);
+    _prospectRecalcTimer = setTimeout(() => analyzeProspect(), 400);
+}
+
 function renderProspectResults(p) {
     const m = p.metrics;
     const panel = $('prospect-results');
@@ -4434,12 +4456,12 @@ function renderProspectResults(p) {
     const holdMonths = p.holding_months || prospectData.settings.holding_months || 6;
 
     panel.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
             <div>
                 <h2 style="font-size:18px;font-weight:800;color:var(--accent);margin-bottom:2px;">${p.address}</h2>
                 <div style="font-size:12px;color:var(--text-muted);">${p.city||''}, ${p.state||''} | ${p.beds||0} bed / ${p.baths||0} bath | ${p.sqft||0} sqft</div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <span class="verdict-badge ${flipBadge}" style="font-size:11px;">Flip: ${m.flip_verdict}</span>
                 <span class="verdict-badge ${rentalBadge}" style="font-size:11px;">Rent: ${m.rental_verdict}</span>
                 <select onchange="updateProspectStage('${p.id}',this.value)" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:12px;">
@@ -4449,16 +4471,40 @@ function renderProspectResults(p) {
             </div>
         </div>
 
+        <!-- Top-line profit cards — update when inline fields change -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px;">
+            <div class="stat-card ${m.flip_pass?'green':m.flip_borderline?'yellow':'red'}">
+                <div class="stat-label">Profit $</div>
+                <div class="stat-value" id="pr-profit" style="color:${profitColor}">${fmt(m.gross_profit)}</div>
+            </div>
+            <div class="stat-card ${m.cash_on_cash_roi>=15?'green':m.cash_on_cash_roi>=10?'yellow':'red'}">
+                <div class="stat-label">Cash on Cash ROI</div>
+                <div class="stat-value" id="pr-coc">${pct(m.cash_on_cash_roi)}</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-label">Annualized (3x turn)</div>
+                <div class="stat-value" id="pr-ann">${pct(m.annualized_roi)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Cost-to-ARV</div>
+                <div class="stat-value" id="pr-arv" style="color:${m.total_cost_to_arv>85?'var(--red)':m.total_cost_to_arv>75?'var(--yellow)':'var(--green)'}">${pct(m.total_cost_to_arv)}</div>
+            </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;font-style:italic;">✏️ Edit any value below — numbers update instantly.</div>
+
         <div class="results-grid">
-            <!-- LEFT: Total Cost Summary (mirrors worksheet) -->
+            <!-- LEFT: Total Cost Summary -->
             <div class="results-col">
                 <h3>Total Cost Summary</h3>
-                <div class="metric-row"><span class="ml">Purchase Price</span><span class="mv">${fmt(p.asking_price)}</span></div>
-                <div class="metric-row"><span class="ml">Acq. Closing Costs</span><span class="mv">${fmt(m.acq_closing)}</span></div>
-                <div class="metric-row"><span class="ml">Rehab & Landscape</span><span class="mv">${fmt(m.rehab_total)}</span></div>
-                <div class="metric-row"><span class="ml">Holding Costs: ${holdMonths} mo.</span><span class="mv">${fmt(m.holding_total)}</span></div>
-                <div class="metric-row"><span class="ml">Selling Cost</span><span class="mv">${fmt(m.total_selling_costs)}</span></div>
-                <div class="metric-row" style="border-top:2px solid var(--accent);padding-top:8px;font-size:16px;">
+                <div class="metric-row"><span class="ml">Purchase Price</span><span class="mv">${ie('qa-asking', p.asking_price)}</span></div>
+                <div class="metric-row"><span class="ml">ARV</span><span class="mv">${ie('qa-arv', p.arv)}</span></div>
+                <div class="metric-row"><span class="ml">Acq. Closing Costs</span><span class="mv">${ie('qa-acqclose', p.acq_closing_costs||0)}</span></div>
+                <div class="metric-row"><span class="ml">Rehab</span><span class="mv">${ie('qa-rehab', p.estimated_rehab||0)}</span></div>
+                <div class="metric-row"><span class="ml">Hold Months</span><span class="mv">${ie('qa-holdmonths', holdMonths, {style:'width:60px'})}</span></div>
+                <div class="metric-row"><span class="ml">Holding Costs (total)</span><span class="mv" style="color:var(--text-secondary)">${fmt(m.holding_total)}</span></div>
+                <div class="metric-row"><span class="ml">Selling Cost (total)</span><span class="mv" style="color:var(--text-secondary)">${fmt(m.total_selling_costs)}</span></div>
+                <div class="metric-row" style="border-top:2px solid var(--accent);padding-top:8px;font-size:15px;">
                     <span class="ml"><strong>Total Cost</strong></span>
                     <span class="mv"><strong>${fmt(m.total_cost)}</strong></span>
                 </div>
@@ -4473,50 +4519,30 @@ function renderProspectResults(p) {
                 </div>
             </div>
 
-            <!-- RIGHT: Selling Cost Detail + Holding Cost (mirrors worksheet) -->
+            <!-- RIGHT: Selling Cost Detail + Holding Cost -->
             <div class="results-col">
                 <h3>Selling Cost Detail</h3>
                 <div class="metric-row"><span class="ml">Estimated Sales Price</span><span class="mv" style="color:var(--green)">${fmt(m.est_sales_price)}</span></div>
-                <div class="metric-row"><span class="ml">Seller Settlement (${m.settlement_pct_used}%)</span><span class="mv">${fmt(m.seller_settlement)}</span></div>
-                <div class="metric-row"><span class="ml">Seller Concessions</span><span class="mv">${fmt(m.seller_concessions)}</span></div>
-                <div class="metric-row"><span class="ml">RE Commission (${m.commission_pct_used}%)</span><span class="mv">${fmt(m.re_commission)}</span></div>
-                <div class="metric-row"><span class="ml">Price Reduction</span><span class="mv">${fmt(m.price_reduction)}</span></div>
+                <div class="metric-row"><span class="ml">Seller Settlement %</span><span class="mv">${ie('qa-settlement', m.settlement_pct_used, {step:0.1, suffix:'%'})}</span></div>
+                <div class="metric-row"><span class="ml">Seller Concessions</span><span class="mv">${ie('qa-concessions', p.seller_concessions||0)}</span></div>
+                <div class="metric-row"><span class="ml">RE Commission %</span><span class="mv">${ie('qa-commission', m.commission_pct_used, {step:0.1, suffix:'%'})}</span></div>
+                <div class="metric-row"><span class="ml">Price Reduction</span><span class="mv">${ie('qa-pricereduction', p.price_reduction||0)}</span></div>
                 <div class="metric-row" style="border-top:1px solid var(--border);padding-top:6px;"><span class="ml"><strong>Total Selling Costs</strong></span><span class="mv"><strong>${fmt(m.total_selling_costs)}</strong></span></div>
 
                 <div style="margin-top:16px;">
                     <h3 style="margin-bottom:8px;">Holding Cost Detail <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(${holdMonths} months)</span></h3>
-                    <div class="metric-row"><span class="ml">Utilities</span><span class="mv">${fmt(m.monthly_utilities)}/mo</span></div>
-                    <div class="metric-row"><span class="ml">Landscape</span><span class="mv">${fmt(m.monthly_landscape)}/mo</span></div>
-                    <div class="metric-row"><span class="ml">Insurance</span><span class="mv">${fmt(m.monthly_insurance)}/mo</span></div>
-                    <div class="metric-row"><span class="ml">Taxes</span><span class="mv">${fmt(m.monthly_taxes)}/mo</span></div>
-                    <div class="metric-row"><span class="ml">Hard Money</span><span class="mv">${fmt(m.monthly_hard_money)}/mo</span></div>
+                    <div class="metric-row"><span class="ml">Utilities/mo</span><span class="mv">${ie('qa-utilities', p.monthly_utilities||0)}</span></div>
+                    <div class="metric-row"><span class="ml">Landscape/mo</span><span class="mv">${ie('qa-landscape', p.monthly_landscape||0)}</span></div>
+                    <div class="metric-row"><span class="ml">Insurance/mo</span><span class="mv">${ie('qa-insurance', p.monthly_insurance||0)}</span></div>
+                    <div class="metric-row"><span class="ml">Taxes/mo</span><span class="mv">${ie('qa-taxes', p.monthly_taxes||0)}</span></div>
+                    <div class="metric-row"><span class="ml">Hard Money/mo</span><span class="mv">${ie('qa-hardmoney', p.monthly_hard_money||0)}</span></div>
                     <div class="metric-row" style="border-top:1px solid var(--border);padding-top:6px;"><span class="ml"><strong>Monthly Hold Cost</strong></span><span class="mv"><strong>${fmt(m.monthly_hold_total)}</strong></span></div>
                     <div class="metric-row"><span class="ml"><strong>Total (${holdMonths} mo.)</strong></span><span class="mv"><strong>${fmt(m.holding_total)}</strong></span></div>
                 </div>
             </div>
         </div>
 
-        <!-- Profitability Analysis (matches worksheet bottom section) -->
-        <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-            <div class="stat-card ${m.flip_pass?'green':m.flip_borderline?'yellow':'red'}">
-                <div class="stat-label">Profit $</div>
-                <div class="stat-value" style="color:${profitColor}">${fmt(m.gross_profit)}</div>
-            </div>
-            <div class="stat-card ${m.cash_on_cash_roi>=15?'green':m.cash_on_cash_roi>=10?'yellow':'red'}">
-                <div class="stat-label">Cash on Cash ROI %</div>
-                <div class="stat-value">${pct(m.cash_on_cash_roi)}</div>
-            </div>
-            <div class="stat-card highlight">
-                <div class="stat-label">Annualized (3x turn)</div>
-                <div class="stat-value">${pct(m.annualized_roi)}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Cost-to-ARV</div>
-                <div class="stat-value" style="color:${m.total_cost_to_arv>85?'var(--red)':m.total_cost_to_arv>75?'var(--yellow)':'var(--green)'}">${pct(m.total_cost_to_arv)}</div>
-            </div>
-        </div>
-
-        <!-- Rental Analysis (additional) -->
+        <!-- Rental Analysis -->
         ${p.monthly_rent_estimate > 0 ? `
         <div class="card" style="margin-top:16px;background:var(--bg-primary);">
             <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;">Rental Analysis <span class="verdict-badge ${rentalBadge}" style="font-size:9px;">${m.rental_verdict}</span></h3>
