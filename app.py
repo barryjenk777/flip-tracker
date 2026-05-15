@@ -361,9 +361,9 @@ def calc_property_metrics(prop):
     # so they are added separately. down_payment is NOT added to avoid double-counting.
     # lender_cashback is subtracted — it is money received BACK from the lender, reducing net OOP.
     if purchase_settlement > 0:
-        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost + total_holding_from_expenses - lender_cashback
+        total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost + total_holding_from_expenses + total_selling_from_expenses - lender_cashback
     else:
-        total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost + total_holding_from_expenses - lender_cashback
+        total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost + total_holding_from_expenses + total_selling_from_expenses - lender_cashback
     draw_surplus = max(total_draws - total_rehab, 0)
     draws_applied = min(total_draws, total_rehab)
     cash_in_deal = total_cash_oop - draws_applied - draw_surplus
