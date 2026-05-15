@@ -250,7 +250,8 @@
       "sqft": 0,
       "state": "VA",
       "status": "renovation",
-      "zip": "23320"
+      "zip": "23320",
+      "cash_invested": 0
     },
     {
       "acq_closing_cost": 5259.16,
@@ -343,6 +344,102 @@
           "description": "Venmo",
           "is_credit": false,
           "vendor": "Patrick Murns"
+        },
+        {
+          "date": "",
+          "vendor": "Echols Plumbing",
+          "description": "Roof Repair Deposit",
+          "amount": 750,
+          "category": "Roofing",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Echols Plumbing",
+          "description": "Roof Repair Final",
+          "amount": 750,
+          "category": "Roofing",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Echols Plumbing",
+          "description": "PICRA Repairs",
+          "amount": 470,
+          "category": "Labor - General",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Echols Plumbing",
+          "description": "PICRA HVAC",
+          "amount": 550,
+          "category": "Labor - HVAC",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Echols Plumbing",
+          "description": "Grass Cutting",
+          "amount": 70,
+          "category": "Landscaping",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Echols Plumbing",
+          "description": "PICRA Repairs 2",
+          "amount": 1200,
+          "category": "Labor - General",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Staging",
+          "description": "Staging Material",
+          "amount": 2275,
+          "category": "Staging",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Echols Plumbing",
+          "description": "Grass Cutting 2",
+          "amount": 70,
+          "category": "Landscaping",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Echols Contracting",
+          "description": "Final Payment + Final PICRA",
+          "amount": 1160,
+          "category": "Labor - General",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Valentina",
+          "description": "Staging Material",
+          "amount": 400,
+          "category": "Staging",
+          "is_credit": false
+        },
+        {
+          "date": "2026-01-08",
+          "vendor": "Utility",
+          "description": "Utilities",
+          "amount": 67.03,
+          "category": "Utilities",
+          "is_credit": false
+        },
+        {
+          "date": "",
+          "vendor": "Insurance",
+          "description": "Homeowner Insurance",
+          "amount": 843,
+          "category": "Other",
+          "is_credit": false
         }
       ],
       "holding_costs": {
@@ -356,73 +453,31 @@
       },
       "id": "property-2",
       "listing_date": null,
-      "metrics": {
-        "acq_closing_cost": 5259.16,
-        "actual_capital_recapture": 1514.1399999999994,
-        "annualized_roi": 0,
-        "arv": 354000,
-        "budget": 30000,
-        "budget_remaining": 1514.1399999999994,
-        "budget_variance": -5.047133333333331,
-        "cash_in_deal": 33745.020000000004,
-        "cash_on_cash": 277.82167561317186,
-        "contingency_amount": 4500.0,
-        "contingency_pct": 15.0,
-        "daily_hold": 0,
-        "days_held": 0,
-        "days_until_zero_profit": 999,
-        "dom": 0,
-        "draw_credit": -28485.86,
-        "draw_utilization": 0.0,
-        "effective_sale": 354000,
-        "flags": [],
-        "gross_profit": 93750.97999999998,
-        "lender_budget": 30000,
-        "lender_budget_remaining": 30000,
-        "lender_budget_spread": 0,
-        "mao": 219314.13999999996,
-        "mao_with_holding": 219314.13999999996,
-        "monthly_hold": 0,
-        "months_held": 0,
-        "net_rehab": 28485.86,
-        "partner_share": 46875.48999999999,
-        "partner_split_pct": 50.0,
-        "passes_70_rule": true,
-        "profit_erosion_per_day": 0,
-        "profit_margin": 26.483327683615816,
-        "purchase_price": 199954,
-        "rehab_by_category": {
-          "Appliances": 2490.86,
-          "Labor - General": 8850,
-          "Labor - Plumbing": 17000,
-          "Marketing": 145
+      "mortgage_payments": [
+        {
+          "date": "2026-01-08",
+          "amount": 1507.98
         },
-        "rehab_per_sqft": 0,
-        "roi": 277.82167561317186,
-        "sale_closing": 5310.0,
-        "sale_closing_cost_pct": 1.5,
-        "sale_commission": 21240.0,
-        "sale_commission_pct": 6.0,
-        "sale_price": 354000,
-        "sqft": 0,
-        "status": "active",
-        "total_cash_oop": 33745.020000000004,
-        "total_cost_per_sqft": 0,
-        "total_cost_to_arv": 73.51667231638419,
-        "total_costs": 260249.02000000002,
-        "total_draws": 0,
-        "total_holding_cost": 0,
-        "total_mortgage_payments": 0,
-        "total_rehab": 28485.86
-      },
-      "mortgage_payments": [],
-      "notes": "Insurance: $843. No mortgage payments, no draws received, no utilities.",
+        {
+          "date": "2026-02-17",
+          "amount": 1507.98
+        },
+        {
+          "date": "2026-03-16",
+          "amount": 1507.98
+        },
+        {
+          "date": "2026-04-14",
+          "amount": 1507.98
+        }
+      ],
+      "notes": "Actual sale closing cost: $16,035.12 (4.53%). 4 mortgage payments @ $1,507.98 each. Utilities $67.03. Insurance $843.",
       "partner_split_pct": 50.0,
       "purchase_date": null,
       "purchase_price": 199954,
       "purchase_settlement": 5259.16,
       "rehab_budget": 30000,
-      "sale_closing_cost_pct": 1.5,
+      "sale_closing_cost_pct": 4.53,
       "sale_commission_pct": 6.0,
       "sale_date": null,
       "sale_price": 354000,

@@ -4283,8 +4283,8 @@ function calcOfferNet() {
     const closingPct    = (m.sale_closing_cost_pct || 1.5) / 100;
     const commission    = offerPrice * commissionPct;
     const saleClosing   = offerPrice * closingPct;
-    const monthlyHolding = m.total_holding_cost && m.hold_months > 0
-        ? m.total_holding_cost / Math.max(m.hold_months, 1)
+    const monthlyHolding = m.total_holding_cost && m.months_held > 0
+        ? m.total_holding_cost / Math.max(m.months_held, 1)
         : 0;
     const extraHolding  = monthlyHolding * extraMonths;
 
