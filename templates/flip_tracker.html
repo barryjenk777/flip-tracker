@@ -1248,11 +1248,11 @@
                     <!-- Concessions toggle row -->
                     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
                         <div style="flex:1;">
-                            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:6px;">Seller Concessions</label>
+                            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);display:block;margin-bottom:6px;">Seller Concessions %</label>
                             <div style="position:relative;">
-                                <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;font-weight:700;color:var(--text-secondary);">$</span>
-                                <input type="number" id="oc-concessions" oninput="calcOfferNet()" placeholder="0"
-                                    style="width:100%;padding:10px 10px 10px 26px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:16px;font-weight:600;box-sizing:border-box;">
+                                <input type="number" id="oc-concessions" oninput="calcOfferNet()" placeholder="0" step="0.1"
+                                    style="width:100%;padding:10px 26px 10px 10px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:16px;font-weight:600;box-sizing:border-box;">
+                                <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:16px;font-weight:700;color:var(--text-secondary);">%</span>
                             </div>
                         </div>
                         <div style="flex:1;">
@@ -1367,7 +1367,7 @@
                 <div class="card-title">Selling Cost Detail</div>
                 <div class="form-grid" style="margin-bottom:16px;">
                     <div class="form-group"><label>Seller Settlement Costs %</label><input type="number" id="qa-settlement" step="0.1"></div>
-                    <div class="form-group"><label>Seller Concessions $</label><input type="number" id="qa-concessions"></div>
+                    <div class="form-group"><label>Seller Concessions %</label><input type="number" id="qa-concessions" step="0.1"></div>
                     <div class="form-group"><label>RE Commission %</label><input type="number" id="qa-commission" step="0.1"></div>
                 </div>
 
@@ -4262,7 +4262,8 @@ function ocPropertyChanged() {
 function calcOfferNet() {
     const propId    = $('oc-property') ? $('oc-property').value : '';
     const offerRaw  = $('oc-offer-price') ? +$('oc-offer-price').value : 0;
-    const concessions = $('oc-concessions') ? +$('oc-concessions').value || 0 : 0;
+    const concessionsPct = $('oc-concessions') ? +$('oc-concessions').value || 0 : 0;
+    const concessions = offerPrice * (concessionsPct / 100);
     const extraMonths = $('oc-extra-months') ? +$('oc-extra-months').value || 0 : 0;
 
     const results = $('oc-results');
@@ -4397,7 +4398,7 @@ async function analyzeProspect() {
         monthly_taxes: +$('qa-taxes').value || 0,
         monthly_hard_money: +$('qa-hardmoney').value || 0,
         seller_settlement_pct: (+$('qa-settlement').value || 1.5) / 100,
-        seller_concessions: +$('qa-concessions').value || 0,
+        seller_concessions: (+$('qa-concessions').value || 0) / 100 * (+$('qa-arv').value || +$('qa-asking').value || 0),
         commission_pct: (+$('qa-commission').value || 6) / 100,
         price_reduction: +$('qa-pricereduction').value || 0,
     };
@@ -4524,7 +4525,7 @@ function renderProspectResults(p) {
                 <h3>Selling Cost Detail</h3>
                 <div class="metric-row"><span class="ml">Estimated Sales Price</span><span class="mv" style="color:var(--green)">${fmt(m.est_sales_price)}</span></div>
                 <div class="metric-row"><span class="ml">Seller Settlement %</span><span class="mv">${ie('qa-settlement', m.settlement_pct_used, {step:0.1, suffix:'%'})}</span></div>
-                <div class="metric-row"><span class="ml">Seller Concessions</span><span class="mv">${ie('qa-concessions', p.seller_concessions||0)}</span></div>
+                <div class="metric-row"><span class="ml">Seller Concessions %</span><span class="mv">${ie('qa-concessions', m.est_sales_price > 0 ? +((p.seller_concessions||0) / m.est_sales_price * 100).toFixed(2) : 0, {step:0.1, suffix:'%'})}</span></div>
                 <div class="metric-row"><span class="ml">RE Commission %</span><span class="mv">${ie('qa-commission', m.commission_pct_used, {step:0.1, suffix:'%'})}</span></div>
                 <div class="metric-row"><span class="ml">Price Reduction</span><span class="mv">${ie('qa-pricereduction', p.price_reduction||0)}</span></div>
                 <div class="metric-row" style="border-top:1px solid var(--border);padding-top:6px;"><span class="ml"><strong>Total Selling Costs</strong></span><span class="mv"><strong>${fmt(m.total_selling_costs)}</strong></span></div>
@@ -4651,7 +4652,7 @@ function loadProspectIntoForm(p) {
 
     // Selling costs
     if ($('qa-settlement')) $('qa-settlement').value = p.seller_settlement_pct ? (p.seller_settlement_pct * 100) : '';
-    if ($('qa-concessions')) $('qa-concessions').value = p.seller_concessions || '';
+    if ($('qa-concessions')) $('qa-concessions').value = p.seller_concessions && (p.arv || p.asking_price) ? +((p.seller_concessions / (p.arv || p.asking_price)) * 100).toFixed(2) : '';
     if ($('qa-commission')) $('qa-commission').value = p.commission_pct ? (p.commission_pct * 100) : '';
 
     // Hidden fields
