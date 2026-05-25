@@ -236,6 +236,8 @@ signal.signal(signal.SIGTERM, _flush_on_shutdown)  # Railway sends SIGTERM befor
 # ---------------------------------------------------------------------------
 def calc_property_metrics(prop):
     """Calculate all derived metrics for a property."""
+    deal_type = prop.get('deal_type', 'flip')          # 'flip' | 'novation'
+    assignment_fee = prop.get('assignment_fee', 0) or 0  # novation only: spread received at closing
     purchase_price = prop.get('purchase_price', 0) or 0
     arv = prop.get('arv', 0) or 0
     sale_price = prop.get('sale_price', 0) or 0
@@ -360,7 +362,11 @@ def calc_property_metrics(prop):
     # EMD, commitment, and appraisal are typically paid OUTSIDE/BEFORE closing (not in CD cash-to-close),
     # so they are added separately. down_payment is NOT added to avoid double-counting.
     # lender_cashback is subtracted — it is money received BACK from the lender, reducing net OOP.
-    if purchase_settlement > 0:
+    if deal_type == 'novation':
+        # Novation: Barry never closes on a purchase — no purchase settlement, no acq costs.
+        # Cash in deal = only what Barry spent out of pocket (rehab + holding + utilities + staging).
+        total_cash_oop = total_rehab + total_holding_cost + total_holding_from_expenses + total_selling_from_expenses - lender_cashback
+    elif purchase_settlement > 0:
         total_cash_oop = purchase_settlement + emd + commitment_fee + appraisal_fee + total_rehab + total_holding_cost + total_holding_from_expenses + total_selling_from_expenses - lender_cashback
     else:
         total_cash_oop = acq_closing_cost + total_rehab + total_holding_cost + total_holding_from_expenses + total_selling_from_expenses - lender_cashback
@@ -413,8 +419,24 @@ def calc_property_metrics(prop):
         rehab_for_profit = max(total_rehab, budget) if budget > 0 else total_rehab
     else:
         rehab_for_profit = total_rehab
-    total_costs = purchase_price + acq_closing_cost + rehab_for_profit + total_holding_from_expenses + total_selling_from_expenses + sale_commission + sale_closing + total_holding_cost
-    gross_profit = effective_sale - total_costs
+
+    if deal_type == 'novation':
+        # Novation: Barry never purchases the property.
+        # Revenue = assignment fee received at closing (the spread between sale price and seller guarantee).
+        # Costs = only Barry's out-of-pocket spend: rehab, holding, utilities, staging.
+        # Commissions and sale closing costs come out of the seller's side — NOT Barry's costs.
+        effective_sale = assignment_fee if assignment_fee > 0 else effective_sale
+        sale_commission = 0
+        sale_closing = 0
+        purchase_price_eff = 0
+        acq_closing_eff = 0
+        total_costs = rehab_for_profit + total_holding_from_expenses + total_selling_from_expenses + total_holding_cost
+        gross_profit = (assignment_fee if assignment_fee > 0 else 0) - total_costs
+    else:
+        purchase_price_eff = purchase_price
+        acq_closing_eff = acq_closing_cost
+        total_costs = purchase_price + acq_closing_cost + rehab_for_profit + total_holding_from_expenses + total_selling_from_expenses + sale_commission + sale_closing + total_holding_cost
+        gross_profit = effective_sale - total_costs
     profit_margin = (gross_profit / effective_sale * 100) if effective_sale > 0 else 0
 
     # Distribution base: use actual net proceeds from sale CD if available (most accurate),
@@ -501,6 +523,7 @@ def calc_property_metrics(prop):
     post_acq_net = total_rehab + total_holding_cost - total_draws
 
     return {
+        'deal_type': deal_type, 'assignment_fee': assignment_fee,
         'purchase_price': purchase_price, 'arv': arv, 'sale_price': sale_price,
         'effective_sale': effective_sale, 'sqft': sqft, 'status': status,
         'total_rehab': total_rehab, 'net_rehab': total_rehab,

@@ -1593,6 +1593,22 @@
         <div class="modal">
             <h2>Edit Property</h2>
             <div class="form-grid" id="form-edit-property">
+                <div class="form-group" style="grid-column:1/-1">
+                    <label>Deal Type</label>
+                    <div style="display:flex;gap:8px;margin-top:4px;">
+                        <button type="button" id="ep-type-flip" onclick="setEpDealType('flip')"
+                            style="flex:1;padding:8px;border-radius:6px;border:2px solid var(--accent);background:var(--accent);color:#fff;font-weight:700;cursor:pointer;">
+                            Traditional Flip
+                        </button>
+                        <button type="button" id="ep-type-novation" onclick="setEpDealType('novation')"
+                            style="flex:1;padding:8px;border-radius:6px;border:2px solid var(--border);background:transparent;color:var(--text-secondary);font-weight:700;cursor:pointer;">
+                            Novation Agreement
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group ep-flip-only"><label>Purchase Price</label><input type="number" id="ep-purchase" step="0.01" oninput="autoCalcEpMortgage()"></div>
+                <div class="form-group ep-novation-only" style="display:none"><label>Seller Net Guarantee <span style="font-size:10px;color:var(--text-muted);font-weight:400;">— amount committed to seller</span></label><input type="number" id="ep-seller-guarantee" step="0.01"></div>
+                <div class="form-group ep-novation-only" style="display:none"><label>Assignment Fee <span style="font-size:10px;color:var(--green);font-weight:400;">— your gross from closing CD</span></label><input type="number" id="ep-assignment-fee" step="0.01"></div>
                 <div class="form-group"><label>Street Address</label><input type="text" id="ep-address"></div>
                 <div class="form-group"><label>City</label><input type="text" id="ep-city"></div>
                 <div class="form-group"><label>State</label><input type="text" id="ep-state"></div>
@@ -1601,13 +1617,13 @@
                 <div class="form-group"><label>Purchase Price</label><input type="number" id="ep-purchase" step="0.01" oninput="autoCalcEpMortgage()"></div>
                 <div class="form-group"><label>ARV (After Repair Value)</label><input type="number" id="ep-arv" step="0.01"></div>
                 <div class="form-group"><label>Sale Price (if sold)</label><input type="number" id="ep-saleprice" step="0.01"></div>
-                <div class="form-group"><label>Acquisition Closing Cost</label><input type="number" id="ep-acqclosing" step="0.01"></div>
-                <div class="form-group"><label>Purchase Settlement (w/ down payment)</label><input type="number" id="ep-settlement" step="0.01"></div>
-                <div class="form-group"><label>EMD <span style="font-size:10px;color:var(--text-muted);font-weight:400;">— enter if paid separately before closing</span></label><input type="number" id="ep-emd" step="0.01"></div>
-                <div class="form-group"><label>Appraisal Fee</label><input type="number" id="ep-appraisal" step="0.01"></div>
-                <div class="form-group"><label>Down Payment</label><input type="number" id="ep-downpayment" step="0.01" placeholder="0 for hard money"></div>
-                <div class="form-group"><label>Commitment Fee</label><input type="number" id="ep-commitment" step="0.01" placeholder="Lender commitment fee"></div>
-                <div class="form-group"><label>Cash Invested (total out-of-pocket)</label><input type="number" id="ep-cashinvested" step="0.01" placeholder="Auto-sums if blank"></div>
+                <div class="form-group ep-flip-only"><label>Acquisition Closing Cost</label><input type="number" id="ep-acqclosing" step="0.01"></div>
+                <div class="form-group ep-flip-only"><label>Purchase Settlement (w/ down payment)</label><input type="number" id="ep-settlement" step="0.01"></div>
+                <div class="form-group ep-flip-only"><label>EMD <span style="font-size:10px;color:var(--text-muted);font-weight:400;">— enter if paid separately before closing</span></label><input type="number" id="ep-emd" step="0.01"></div>
+                <div class="form-group ep-flip-only"><label>Appraisal Fee</label><input type="number" id="ep-appraisal" step="0.01"></div>
+                <div class="form-group ep-flip-only"><label>Down Payment</label><input type="number" id="ep-downpayment" step="0.01" placeholder="0 for hard money"></div>
+                <div class="form-group ep-flip-only"><label>Commitment Fee</label><input type="number" id="ep-commitment" step="0.01" placeholder="Lender commitment fee"></div>
+                <div class="form-group ep-flip-only"><label>Cash Invested (total out-of-pocket)</label><input type="number" id="ep-cashinvested" step="0.01" placeholder="Auto-sums if blank"></div>
                 <div class="form-group"><label>Actual Rehab Budget</label><input type="number" id="ep-budget" step="0.01" oninput="autoCalcEpMortgage()"></div>
                 <div class="form-group"><label>Lender Rehab Budget</label><input type="number" id="ep-lender-budget" step="0.01"></div>
                 <div class="form-group"><label>Purchase Date</label><input type="date" id="ep-purchasedate"></div>
@@ -1857,6 +1873,9 @@ function showAddMortgage() { showModal('modal-add-mortgage'); }
 function showEditProperty() {
     const prop = getSelected();
     if (!prop) return;
+    setEpDealType(prop.deal_type || 'flip');
+    if ($('ep-assignment-fee')) $('ep-assignment-fee').value = prop.assignment_fee || '';
+    if ($('ep-seller-guarantee')) $('ep-seller-guarantee').value = prop.seller_guarantee || '';
     $('ep-address').value = prop.address || '';
     $('ep-city').value = prop.city || '';
     $('ep-state').value = prop.state || '';
@@ -1904,6 +1923,25 @@ function showEditProperty() {
     showModal('modal-edit-property');
 }
 
+function setEpDealType(type) {
+    const isNov = type === 'novation';
+    const btnFlip = $('ep-type-flip');
+    const btnNov  = $('ep-type-novation');
+    if (btnFlip) {
+        btnFlip.style.background    = isNov ? 'transparent' : 'var(--accent)';
+        btnFlip.style.color         = isNov ? 'var(--text-secondary)' : '#fff';
+        btnFlip.style.borderColor   = isNov ? 'var(--border)' : 'var(--accent)';
+    }
+    if (btnNov) {
+        btnNov.style.background   = isNov ? 'var(--accent)' : 'transparent';
+        btnNov.style.color        = isNov ? '#fff' : 'var(--text-secondary)';
+        btnNov.style.borderColor  = isNov ? 'var(--accent)' : 'var(--border)';
+        btnNov.dataset.active     = isNov ? 'true' : 'false';
+    }
+    document.querySelectorAll('.ep-flip-only').forEach(el => el.style.display = isNov ? 'none' : '');
+    document.querySelectorAll('.ep-novation-only').forEach(el => el.style.display = isNov ? '' : 'none');
+}
+
 async function submitEditProperty() {
     const prop = getSelected();
     if (!prop) return;
@@ -1942,6 +1980,9 @@ async function submitEditProperty() {
         sale_closing_cost_pct: +$('ep-saleclosing').value || 1.5,
         partner_split_pct: +$('ep-split').value || 50,
         contingency_pct: +$('ep-contingency').value || 15,
+        deal_type: $('ep-type-novation') && $('ep-type-novation').dataset.active === 'true' ? 'novation' : 'flip',
+        assignment_fee: +$('ep-assignment-fee').value || 0,
+        seller_guarantee: +$('ep-seller-guarantee').value || 0,
         notes: $('ep-notes').value,
         holding_costs: {
             monthly_mortgage: +$('ep-mortgage').value || 0,
@@ -2712,7 +2753,10 @@ function renderPropertyDetail() {
 
     // Stats
     $('property-stats').innerHTML = `
-        <div class="stat-card highlight"><div class="stat-label">Est. Profit ${m.profit_uses_budget ? '<span title="Projected using full rehab budget, not actual spend" style="font-size:9px;background:rgba(255,167,38,0.2);color:var(--yellow);padding:1px 5px;border-radius:8px;font-weight:600;vertical-align:middle;">PROJECTED</span>' : ''}</div><div class="stat-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div><div class="stat-sub">${m.profit_uses_budget ? 'Using budget '+fmt(m.rehab_for_profit)+' (spent '+fmt(m.total_rehab)+')' : m.cash_invested>0?'Your total: '+fmt(m.partner_total):'Your split: '+fmt(m.partner_share)}</div></div>
+        ${m.deal_type === 'novation'
+            ? `<div class="stat-card highlight"><div class="stat-label">Assignment Fee</div><div class="stat-value" style="color:var(--green)">${fmt(m.assignment_fee)}</div><div class="stat-sub">Net to you: ${fmt(m.gross_profit)}</div></div>`
+            : `<div class="stat-card highlight"><div class="stat-label">Est. Profit ${m.profit_uses_budget ? '<span title="Projected using full rehab budget, not actual spend" style="font-size:9px;background:rgba(255,167,38,0.2);color:var(--yellow);padding:1px 5px;border-radius:8px;font-weight:600;vertical-align:middle;">PROJECTED</span>' : ''}</div><div class="stat-value" style="color:${m.gross_profit>=0?'var(--green)':'var(--red)'}">${fmt(m.gross_profit)}</div><div class="stat-sub">${m.profit_uses_budget ? 'Using budget '+fmt(m.rehab_for_profit)+' (spent '+fmt(m.total_rehab)+')' : m.cash_invested>0?'Your total: '+fmt(m.partner_total):'Your split: '+fmt(m.partner_share)}</div></div>`
+        }
         <div class="stat-card ${m.roi>=20?'green':m.roi>=10?'yellow':'red'}"><div class="stat-label">ROI</div><div class="stat-value">${pct(m.roi)}</div><div class="stat-sub">Annualized: ${pct(m.annualized_roi)}</div></div>
         <div class="stat-card"><div class="stat-label">Cash in Deal</div><div class="stat-value">${fmt(m.cash_in_deal)}</div><div class="stat-sub">OOP: ${fmt(m.total_cash_oop)}</div></div>
         <div class="stat-card"><div class="stat-label">Profit Margin</div><div class="stat-value">${pct(m.profit_margin)}</div></div>
