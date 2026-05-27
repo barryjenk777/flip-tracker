@@ -578,21 +578,36 @@ def calc_pnl(prop, metrics):
     For flips (dealer property), all costs are capitalized to basis (COGS).
     Profits are ordinary income subject to self-employment tax.
     """
+    deal_type = prop.get('deal_type', 'flip')
     cd_purchase = prop.get('closing_disclosure_purchase', {})
     cd_sale = prop.get('closing_disclosure_sale', {})
     cd_lender_cashback = prop.get('closing_disclosure_lender_cashback', {})
 
     # ---- GROSS INCOME ----
-    sale_price = prop.get('sale_price', 0) or metrics['effective_sale']
-    seller_concessions = 0
-    if cd_sale and cd_sale.get('line_items'):
-        for item in cd_sale['line_items']:
-            if 'concession' in item.get('description', '').lower():
-                seller_concessions += item.get('amount', 0)
-    net_sale_proceeds = sale_price - seller_concessions
+    if deal_type == 'novation':
+        # Novation: revenue = assignment fee (the spread received at closing).
+        # No sale price, no concessions — the CD shows assignment fee as a line item.
+        assignment_fee = prop.get('assignment_fee', 0) or 0
+        sale_price = assignment_fee
+        seller_concessions = 0
+        net_sale_proceeds = assignment_fee
+    else:
+        sale_price = prop.get('sale_price', 0) or metrics['effective_sale']
+        seller_concessions = 0
+        if cd_sale and cd_sale.get('line_items'):
+            for item in cd_sale['line_items']:
+                if 'concession' in item.get('description', '').lower():
+                    seller_concessions += item.get('amount', 0)
+        net_sale_proceeds = sale_price - seller_concessions
 
     # ---- COGS: Acquisition ----
-    purchase_price = metrics['purchase_price']
+    # Novation: Barry never closes on a purchase — no purchase price or acq costs.
+    if deal_type == 'novation':
+        purchase_price = 0
+        acq_closing_items = []
+        acq_closing_total = 0
+    else:
+        purchase_price = metrics['purchase_price']
 
     # Acquisition closing costs — itemized from CD or lump sum
     if cd_purchase and cd_purchase.get('line_items'):
@@ -631,6 +646,7 @@ def calc_pnl(prop, metrics):
         acq_closing_total = emd_val + appraisal_val + commitment_val + base_closing
 
     # ---- COGS: Renovation — grouped by tax category ----
+    # (same for both flip and novation)
     expenses = prop.get('expenses', [])
     renovation_groups = {}  # {pnl_label: [expenses]}
     selling_expenses = []
@@ -672,19 +688,30 @@ def calc_pnl(prop, metrics):
     total_cogs = purchase_price + acq_closing_total + renovation_total + holding_total
 
     # ---- SELLING COSTS ----
-    commission = metrics['sale_commission']
-    commission_pct = metrics['sale_commission_pct']
-    sale_closing = metrics['sale_closing']
-    sale_closing_pct = metrics['sale_closing_cost_pct']
-    selling_expense_total = sum(e.get('amount', 0) for e in selling_expenses)
+    # Novation: commissions and sale closing costs come from the seller's CD, not Barry's pocket.
+    # Barry's only "selling" costs are staging/marketing he paid out of pocket.
+    if deal_type == 'novation':
+        commission = 0
+        commission_pct = 0
+        sale_closing = 0
+        sale_closing_pct = 0
+        sale_closing_items = []
+        selling_expense_total = sum(e.get('amount', 0) for e in selling_expenses)
+        total_selling = selling_expense_total
+    else:
+        commission = metrics['sale_commission']
+        commission_pct = metrics['sale_commission_pct']
+        sale_closing = metrics['sale_closing']
+        sale_closing_pct = metrics['sale_closing_cost_pct']
+        selling_expense_total = sum(e.get('amount', 0) for e in selling_expenses)
 
-    # Sale closing items from CD if available
-    sale_closing_items = []
-    if cd_sale and cd_sale.get('line_items'):
-        sale_closing_items = cd_sale['line_items']
-        sale_closing = sum(item.get('amount', 0) for item in sale_closing_items)
+        # Sale closing items from CD if available
+        sale_closing_items = []
+        if cd_sale and cd_sale.get('line_items'):
+            sale_closing_items = cd_sale['line_items']
+            sale_closing = sum(item.get('amount', 0) for item in sale_closing_items)
 
-    total_selling = commission + sale_closing + selling_expense_total
+        total_selling = commission + sale_closing + selling_expense_total
 
     # ---- TOTALS ----
     total_costs = total_cogs + total_selling
@@ -710,6 +737,9 @@ def calc_pnl(prop, metrics):
     partner_a_total = cash_invested + partner_a_share  # capital return + profit share
 
     return {
+        # Deal type
+        'deal_type': deal_type,
+        'assignment_fee': prop.get('assignment_fee', 0) or 0,
         # Income
         'sale_price': sale_price,
         'seller_concessions': seller_concessions,

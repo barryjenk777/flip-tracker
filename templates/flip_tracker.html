@@ -3754,25 +3754,32 @@ function renderPropertyPnl(pnl, prop) {
     const f = (v) => v >= 0 ? `$${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `-$${Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     const statusLabel = pnl.status === 'sold' ? '🟢 SOLD' : pnl.status === 'listed' ? '🟡 LISTED' : '🔵 ACTIVE';
 
+    const isNovation = pnl.deal_type === 'novation';
+
     let html = `
     <div class="pnl-header">
-        <h2>Profit & Loss Statement</h2>
+        <h2>Profit & Loss Statement${isNovation ? ' <span style="font-size:12px;background:rgba(99,102,241,0.15);color:#818cf8;padding:2px 8px;border-radius:10px;font-weight:600;vertical-align:middle;">NOVATION</span>' : ''}</h2>
         <div class="pnl-meta">${prop.address} — ${prop.city}, ${prop.state} &nbsp;|&nbsp; ${statusLabel}</div>
-        <div class="pnl-meta">Purchased: ${pnl.purchase_date || 'N/A'} &nbsp;|&nbsp; Sold: ${pnl.sale_date || 'N/A'} &nbsp;|&nbsp; Days Held: ${pnl.days_held || 0}</div>
-        ${pnl.has_closing_disclosure_purchase ? '<div class="pnl-meta" style="color:var(--green)">✅ Purchase Closing Disclosure uploaded — itemized costs included</div>' : ''}
-        ${pnl.has_closing_disclosure_sale ? '<div class="pnl-meta" style="color:var(--green)">✅ Sale Closing Disclosure uploaded — itemized costs included</div>' : ''}
+        <div class="pnl-meta">${isNovation ? 'Agreement Date' : 'Purchased'}: ${pnl.purchase_date || 'N/A'} &nbsp;|&nbsp; Closed: ${pnl.sale_date || 'N/A'} &nbsp;|&nbsp; Days Held: ${pnl.days_held || 0}</div>
+        ${pnl.has_closing_disclosure_sale ? '<div class="pnl-meta" style="color:var(--green)">✅ Sale Closing Disclosure uploaded</div>' : ''}
     </div>
     <table class="pnl-table">
-        <tr><td class="pnl-section" colspan="2">GROSS INCOME</td><td class="pnl-section"></td></tr>
-        <tr><td class="pnl-sub">Sale Price</td><td></td><td class="pnl-amount">${f(pnl.sale_price)}</td></tr>`;
-    if (pnl.seller_concessions > 0) {
-        html += `<tr><td class="pnl-sub">Less: Seller Concessions</td><td></td><td class="pnl-amount pnl-negative">-${f(pnl.seller_concessions)}</td></tr>`;
-    }
-    html += `<tr><td class="pnl-sub pnl-total">Net Sale Proceeds</td><td></td><td class="pnl-amount pnl-total">${f(pnl.net_sale_proceeds)}</td></tr>
+        <tr><td class="pnl-section" colspan="2">GROSS INCOME</td><td class="pnl-section"></td></tr>`;
 
+    if (isNovation) {
+        html += `<tr><td class="pnl-sub">Assignment Fee (spread at closing)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.assignment_fee)}</td></tr>
+        <tr><td class="pnl-sub pnl-total">Total Revenue</td><td></td><td class="pnl-amount pnl-total">${f(pnl.assignment_fee)}</td></tr>
+        <tr><td class="pnl-section" colspan="2">COSTS (Out-of-Pocket)</td><td class="pnl-section"></td></tr>`;
+    } else {
+        html += `<tr><td class="pnl-sub">Sale Price</td><td></td><td class="pnl-amount">${f(pnl.sale_price)}</td></tr>`;
+        if (pnl.seller_concessions > 0) {
+            html += `<tr><td class="pnl-sub">Less: Seller Concessions</td><td></td><td class="pnl-amount pnl-negative">-${f(pnl.seller_concessions)}</td></tr>`;
+        }
+        html += `<tr><td class="pnl-sub pnl-total">Net Sale Proceeds</td><td></td><td class="pnl-amount pnl-total">${f(pnl.net_sale_proceeds)}</td></tr>
         <tr><td class="pnl-section" colspan="2">COST OF GOODS SOLD (Capitalized to Basis)</td><td class="pnl-section"></td></tr>
         <tr><td class="pnl-sub">Purchase Price</td><td></td><td class="pnl-amount">${f(pnl.purchase_price)}</td></tr>
         <tr><td class="pnl-sub">Acquisition Closing Costs</td><td></td><td class="pnl-amount">${f(pnl.acq_closing_total)}</td></tr>`;
+    }
 
     // Itemized closing costs from CD
     if (pnl.acq_closing_items && pnl.acq_closing_items.length) {
@@ -3802,13 +3809,21 @@ function renderPropertyPnl(pnl, prop) {
         }
     }
 
-    html += `<tr><td class="pnl-sub pnl-total">TOTAL COGS</td><td></td><td class="pnl-amount pnl-total">${f(pnl.total_cogs)}</td></tr>
+    html += `<tr><td class="pnl-sub pnl-total">TOTAL ${isNovation ? 'COSTS' : 'COGS'}</td><td></td><td class="pnl-amount pnl-total">${f(pnl.total_cogs)}</td></tr>`;
 
+    if (!isNovation) {
+        html += `
         <tr><td class="pnl-section" colspan="2">SELLING COSTS</td><td class="pnl-section"></td></tr>
         <tr><td class="pnl-sub">RE Commissions (${pnl.commission_pct}%)</td><td></td><td class="pnl-amount">${f(pnl.commission)}</td></tr>
         <tr><td class="pnl-sub">Sale Settlement (${pnl.sale_closing_pct}%)</td><td></td><td class="pnl-amount">${f(pnl.sale_closing)}</td></tr>`;
 
-    if (pnl.selling_expenses && pnl.selling_expenses.length) {
+        if (pnl.selling_expenses && pnl.selling_expenses.length) {
+            pnl.selling_expenses.forEach(se => {
+                html += `<tr><td class="pnl-subsub">${se.description}</td><td style="font-size:10px">${se.vendor}</td><td class="pnl-amount" style="font-size:11px">${f(se.amount)}</td></tr>`;
+            });
+        }
+    } else if (pnl.selling_expenses && pnl.selling_expenses.length) {
+        html += `<tr><td class="pnl-section" colspan="2">SELLING COSTS (staging / marketing paid by Barry)</td><td class="pnl-section"></td></tr>`;
         pnl.selling_expenses.forEach(se => {
             html += `<tr><td class="pnl-subsub">${se.description}</td><td style="font-size:10px">${se.vendor}</td><td class="pnl-amount" style="font-size:11px">${f(se.amount)}</td></tr>`;
         });
