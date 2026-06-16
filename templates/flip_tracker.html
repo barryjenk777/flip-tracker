@@ -968,20 +968,42 @@
             <div class="card" id="overhead-card-wrap">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
                     <div class="card-title" style="margin-bottom:0;">Business Overhead</div>
-                    <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="toggleOverheadForm()">+ Log Expense</button>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="toggleOverheadSalaryForm()">⚙ Monthly Salary</button>
+                        <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="toggleOverheadForm()">+ One-Off Expense</button>
+                    </div>
                 </div>
-                <div id="overhead-stats-grid"></div>
-                <div id="overhead-form-wrap" style="display:none;margin-top:14px;padding:14px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);">
+                <!-- Monthly salary settings form -->
+                <div id="overhead-salary-form" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--accent);">
+                    <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;margin-bottom:10px;">Monthly Salary Setting</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                        <div class="form-group">
+                            <label>Monthly Rate ($)</label>
+                            <input type="number" id="oh-monthly-rate" step="0.01" placeholder="e.g. 3333.33">
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">$40,000/yr = $3,333.33/mo</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" id="oh-start-date">
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">When did the employee start?</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-secondary" onclick="toggleOverheadSalaryForm()">Cancel</button>
+                        <button class="btn btn-primary" onclick="saveOverheadSalary()">Save</button>
+                    </div>
+                </div>
+                <!-- One-off expense form -->
+                <div id="overhead-form-wrap" style="display:none;margin-bottom:14px;padding:14px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);">
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
                         <div class="form-group"><label>Date</label><input type="date" id="oh-date"></div>
                         <div class="form-group"><label>Category</label>
                             <select id="oh-category" style="background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px;border-radius:6px;width:100%;font-size:14px;">
-                                <option value="Payroll">Payroll</option>
                                 <option value="Staging Supplies">Staging Supplies</option>
                                 <option value="Miscellaneous">Miscellaneous</option>
                             </select>
                         </div>
-                        <div class="form-group"><label>Description</label><input type="text" id="oh-description" placeholder="e.g. Employee — week of 6/15"></div>
+                        <div class="form-group"><label>Description</label><input type="text" id="oh-description" placeholder="e.g. Stager supply run"></div>
                         <div class="form-group"><label>Amount ($)</label><input type="number" id="oh-amount" step="0.01" placeholder="0.00"></div>
                     </div>
                     <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -989,9 +1011,10 @@
                         <button class="btn btn-primary" onclick="submitOverheadExpense()">Save</button>
                     </div>
                 </div>
+                <div id="overhead-stats-grid"></div>
                 <div id="overhead-log-wrap" style="margin-top:14px;">
                     <button style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;padding:0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;" onclick="toggleOverheadLog()">
-                        Expense Log &nbsp;<span id="oh-log-toggle">▼ Show</span>
+                        One-Off Expense Log &nbsp;<span id="oh-log-toggle">▼ Show</span>
                     </button>
                     <div id="overhead-log-body" style="display:none;margin-top:8px;"></div>
                 </div>
@@ -5859,24 +5882,35 @@ let _closeoutIncludeOverhead = false;
 
 async function loadOverhead() {
     const res = await apiFetch('/api/overhead');
-    if (res) { overheadData = res; renderOverheadCard(); }
+    if (res && res.ok) { overheadData = await res.json(); renderOverheadCard(); }
 }
 
 function renderOverheadCard() {
     const el = document.getElementById('overhead-stats-grid');
     if (!el) return;
-    const { total_logged, total_allocated, outstanding } = overheadData;
+    const { total_logged, total_allocated, outstanding, monthly_rate, months_elapsed, monthly_accrued, manual_total } = overheadData;
+    const hasSalary = (monthly_rate || 0) > 0;
     el.innerHTML = `
+        ${hasSalary ? `
+        <div style="background:rgba(79,195,247,0.06);border:1px solid rgba(79,195,247,0.2);border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">
+                <span style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;">Auto-Accrued Salary</span>
+                <span style="font-size:13px;color:var(--text-secondary);">${fmt(monthly_rate)}/mo &times; ${(months_elapsed||0).toFixed(1)} months = <strong style="color:var(--text-primary);">${fmt(monthly_accrued)}</strong></span>
+            </div>
+        </div>` : `
+        <div style="background:rgba(255,167,38,0.06);border:1px solid rgba(255,167,38,0.2);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--yellow);">
+            No monthly salary set. Click <strong>Monthly Salary</strong> to configure the auto-accrual.
+        </div>`}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:4px;">
             <div class="stat-card">
-                <div class="stat-label">Total Logged</div>
+                <div class="stat-label">Total Owed to Barry</div>
                 <div class="stat-value" style="font-size:20px;">${fmt(total_logged)}</div>
-                <div class="stat-sub">Payroll, staging, misc</div>
+                <div class="stat-sub">${hasSalary ? `${fmt(monthly_accrued)} salary + ${fmt(manual_total)} one-off` : 'One-off expenses only'}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Allocated to Deals</div>
+                <div class="stat-label">Reimbursed via Deals</div>
                 <div class="stat-value" style="font-size:20px;color:var(--yellow);">${fmt(total_allocated)}</div>
-                <div class="stat-sub">Reimbursed at close</div>
+                <div class="stat-sub">Paid back at close</div>
             </div>
             <div class="stat-card highlight">
                 <div class="stat-label">Outstanding Balance</div>
@@ -5887,11 +5921,39 @@ function renderOverheadCard() {
     if (_overheadLogOpen) renderOverheadLog();
 }
 
+function toggleOverheadSalaryForm() {
+    const el = document.getElementById('overhead-salary-form');
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+    if (el.style.display !== 'none') {
+        const s = overheadData.overhead_settings || {};
+        const rateEl = document.getElementById('oh-monthly-rate');
+        const startEl = document.getElementById('oh-start-date');
+        if (rateEl && s.monthly_rate) rateEl.value = s.monthly_rate;
+        if (startEl && s.start_date) startEl.value = s.start_date;
+    }
+}
+
+async function saveOverheadSalary() {
+    const monthly_rate = parseFloat(document.getElementById('oh-monthly-rate').value) || 0;
+    const start_date   = document.getElementById('oh-start-date').value || null;
+    const res = await apiFetch('/api/overhead/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ monthly_rate, start_date })
+    });
+    if (res && res.ok) {
+        overheadData = await res.json();
+        renderOverheadCard();
+        document.getElementById('overhead-salary-form').style.display = 'none';
+        showToast('Monthly salary saved');
+    }
+}
+
 function toggleOverheadForm() {
     const el = document.getElementById('overhead-form-wrap');
     if (!el) return;
-    const open = el.style.display === 'none' || el.style.display === '';
-    el.style.display = open && el.style.display === 'none' ? '' : 'none';
+    el.style.display = el.style.display === 'none' ? '' : 'none';
     if (el.style.display !== 'none') {
         const today = new Date().toISOString().split('T')[0];
         const d = document.getElementById('oh-date');
@@ -5911,8 +5973,8 @@ async function submitOverheadExpense() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ date, category, description, amount })
     });
-    if (res) {
-        overheadData = res;
+    if (res && res.ok) {
+        overheadData = await res.json();
         renderOverheadCard();
         if (_overheadLogOpen) renderOverheadLog();
         document.getElementById('oh-description').value = '';
@@ -5926,8 +5988,8 @@ async function submitOverheadExpense() {
 async function deleteOverheadExpense(id) {
     if (!confirm('Delete this overhead expense?')) return;
     const res = await apiFetch(`/api/overhead/${id}`, { method: 'DELETE' });
-    if (res) {
-        overheadData = res;
+    if (res && res.ok) {
+        overheadData = await res.json();
         renderOverheadCard();
         renderOverheadLog();
     }

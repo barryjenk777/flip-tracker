@@ -145,6 +145,7 @@ def _default_data():
         'prospects': [],
         'prospect_settings': _default_prospect_settings(),
         'overhead_expenses': [],
+        'overhead_settings': {'monthly_rate': 0, 'start_date': None},
         'settings': {
             'default_commission_pct': 4.0,
             'default_closing_cost_pct': 1.5,
@@ -165,6 +166,7 @@ def load_data():
                 _memory_store.setdefault('prospects', [])
                 _memory_store.setdefault('prospect_settings', _default_prospect_settings())
                 _memory_store.setdefault('overhead_expenses', [])
+                _memory_store.setdefault('overhead_settings', {'monthly_rate': 0, 'start_date': None})
                 return _memory_store
         except (FileNotFoundError, json.JSONDecodeError):
             # Try to seed from bundled flip_data.json in the app directory
@@ -175,6 +177,7 @@ def load_data():
                     _memory_store.setdefault('prospects', [])
                     _memory_store.setdefault('prospect_settings', _default_prospect_settings())
                     _memory_store.setdefault('overhead_expenses', [])
+                    _memory_store.setdefault('overhead_settings', {'monthly_rate': 0, 'start_date': None})
                     # Write to volume without re-acquiring lock (already held)
                     _save_to_disk(_memory_store)
                     return _memory_store
@@ -1888,23 +1891,62 @@ def update_flip_settings():
 # ---------------------------------------------------------------------------
 # Business Overhead routes
 # ---------------------------------------------------------------------------
-@app.route('/api/overhead', methods=['GET'])
-@login_required
-def get_overhead():
-    data = load_data()
+def _calc_overhead_totals(data):
+    """Calculate overhead totals: auto-accrued monthly salary + manual one-off entries."""
     expenses = data.get('overhead_expenses', [])
-    total_logged = sum(e.get('amount', 0) for e in expenses)
+    settings = data.get('overhead_settings', {}) or {}
+    monthly_rate = settings.get('monthly_rate', 0) or 0
+    start_date_str = settings.get('start_date') or ''
+
+    monthly_accrued = 0.0
+    months_elapsed = 0.0
+    if monthly_rate > 0 and start_date_str:
+        try:
+            start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
+            days = (datetime.now() - start_dt).days
+            months_elapsed = max(days / 30.4375, 0)
+            monthly_accrued = monthly_rate * months_elapsed
+        except ValueError:
+            pass
+
+    manual_total = sum(e.get('amount', 0) for e in expenses)
+    total_logged = monthly_accrued + manual_total
     total_allocated = sum(
         p.get('overhead_allocation', 0) or 0
         for p in data.get('properties', [])
         if p.get('status') == 'closed'
     )
-    return jsonify({
+    return {
         'expenses': expenses,
-        'total_logged': total_logged,
-        'total_allocated': total_allocated,
-        'outstanding': max(total_logged - total_allocated, 0),
-    })
+        'overhead_settings': settings,
+        'monthly_rate': monthly_rate,
+        'months_elapsed': round(months_elapsed, 1),
+        'monthly_accrued': round(monthly_accrued, 2),
+        'manual_total': round(manual_total, 2),
+        'total_logged': round(total_logged, 2),
+        'total_allocated': round(total_allocated, 2),
+        'outstanding': round(max(total_logged - total_allocated, 0), 2),
+    }
+
+
+@app.route('/api/overhead', methods=['GET'])
+@login_required
+def get_overhead():
+    data = load_data()
+    return jsonify(_calc_overhead_totals(data))
+
+
+@app.route('/api/overhead/settings', methods=['POST'])
+@login_required
+def update_overhead_settings():
+    data = load_data()
+    body = request.json or {}
+    data['overhead_settings'] = {
+        'monthly_rate': body.get('monthly_rate', 0) or 0,
+        'start_date': body.get('start_date') or None,
+    }
+    save_data(data)
+    return jsonify(_calc_overhead_totals(data))
 
 
 @app.route('/api/overhead', methods=['POST'])
@@ -1915,20 +1957,7 @@ def add_overhead_expense():
     expense['id'] = f"oh-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
     data.setdefault('overhead_expenses', []).append(expense)
     save_data(data)
-    expenses = data['overhead_expenses']
-    total_logged = sum(e.get('amount', 0) for e in expenses)
-    total_allocated = sum(
-        p.get('overhead_allocation', 0) or 0
-        for p in data.get('properties', [])
-        if p.get('status') == 'closed'
-    )
-    return jsonify({
-        'expense': expense,
-        'expenses': expenses,
-        'total_logged': total_logged,
-        'total_allocated': total_allocated,
-        'outstanding': max(total_logged - total_allocated, 0),
-    })
+    return jsonify(_calc_overhead_totals(data))
 
 
 @app.route('/api/overhead/<expense_id>', methods=['DELETE'])
@@ -1942,19 +1971,7 @@ def delete_overhead_expense(expense_id):
     if len(data['overhead_expenses']) == before:
         return jsonify({'error': 'Not found'}), 404
     save_data(data)
-    expenses = data['overhead_expenses']
-    total_logged = sum(e.get('amount', 0) for e in expenses)
-    total_allocated = sum(
-        p.get('overhead_allocation', 0) or 0
-        for p in data.get('properties', [])
-        if p.get('status') == 'closed'
-    )
-    return jsonify({
-        'expenses': expenses,
-        'total_logged': total_logged,
-        'total_allocated': total_allocated,
-        'outstanding': max(total_logged - total_allocated, 0),
-    })
+    return jsonify(_calc_overhead_totals(data))
 
 
 # ---------------------------------------------------------------------------
