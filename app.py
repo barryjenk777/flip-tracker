@@ -144,6 +144,7 @@ def _default_data():
         'properties': [],
         'prospects': [],
         'prospect_settings': _default_prospect_settings(),
+        'overhead_expenses': [],
         'settings': {
             'default_commission_pct': 4.0,
             'default_closing_cost_pct': 1.5,
@@ -163,6 +164,7 @@ def load_data():
                 _memory_store = json.load(f)
                 _memory_store.setdefault('prospects', [])
                 _memory_store.setdefault('prospect_settings', _default_prospect_settings())
+                _memory_store.setdefault('overhead_expenses', [])
                 return _memory_store
         except (FileNotFoundError, json.JSONDecodeError):
             # Try to seed from bundled flip_data.json in the app directory
@@ -172,6 +174,7 @@ def load_data():
                     _memory_store = json.load(f)
                     _memory_store.setdefault('prospects', [])
                     _memory_store.setdefault('prospect_settings', _default_prospect_settings())
+                    _memory_store.setdefault('overhead_expenses', [])
                     # Write to volume without re-acquiring lock (already held)
                     _save_to_disk(_memory_store)
                     return _memory_store
@@ -446,10 +449,14 @@ def calc_property_metrics(prop):
     net_proceeds_at_close = cd_sale_data.get('cash_to_close', 0) or 0
     distribution_base = net_proceeds_at_close if net_proceeds_at_close > 0 else gross_profit
 
-    # Distributable profit = distribution base after returning cash capital invested
-    distributable_profit = distribution_base - cash_invested
+    # Overhead reimbursement — Barry fronts business overhead (payroll, staging, misc) and
+    # gets reimbursed from deal proceeds before the profit split. Set per-deal at closeout.
+    overhead_allocation = prop.get('overhead_allocation', 0) or 0
+
+    # Distributable profit = distribution base after returning cash capital invested + overhead
+    distributable_profit = distribution_base - cash_invested - overhead_allocation
     partner_share = distributable_profit * (partner_split_pct / 100)  # each partner's share of distributable
-    partner_total = cash_invested + partner_share  # what Partner A (Barry) actually takes home
+    partner_total = cash_invested + overhead_allocation + partner_share  # what Barry actually takes home
 
     # ---- ROI ----
     roi = (gross_profit / cash_in_deal * 100) if cash_in_deal > 0 else 0
@@ -551,6 +558,7 @@ def calc_property_metrics(prop):
         'pre_closing_cash': pre_closing_cash, 'post_acq_net': post_acq_net,
         'net_proceeds_at_close': net_proceeds_at_close,
         'distribution_base': distribution_base,
+        'overhead_allocation': overhead_allocation,
         'sale_commission': sale_commission, 'sale_commission_pct': sale_commission_pct,
         'sale_closing': sale_closing, 'sale_closing_cost_pct': sale_closing_cost_pct,
         'total_costs': total_costs, 'gross_profit': gross_profit,
@@ -728,13 +736,14 @@ def calc_pnl(prop, metrics):
     # financed portions, while CD net proceeds are already net of loan payoff.
     split_pct = prop.get('partner_split_pct', 50) / 100
     cash_invested = metrics.get('cash_invested', 0)
+    overhead_allocation = prop.get('overhead_allocation', 0) or 0
     net_proceeds_at_close = metrics.get('net_proceeds_at_close', 0)
     using_cd_proceeds = net_proceeds_at_close > 0
     distribution_base = net_proceeds_at_close if using_cd_proceeds else net_profit
-    distributable_profit = distribution_base - cash_invested
+    distributable_profit = distribution_base - cash_invested - overhead_allocation
     partner_a_share = distributable_profit * split_pct
     partner_b_share = distributable_profit * (1 - split_pct)
-    partner_a_total = cash_invested + partner_a_share  # capital return + profit share
+    partner_a_total = cash_invested + overhead_allocation + partner_a_share
 
     return {
         # Deal type
@@ -774,6 +783,7 @@ def calc_pnl(prop, metrics):
         'se_tax': se_tax,
         'net_after_se': net_after_se,
         'cash_invested': cash_invested,
+        'overhead_allocation': overhead_allocation,
         'net_proceeds_at_close': net_proceeds_at_close,
         'distribution_base': distribution_base,
         'using_cd_proceeds': using_cd_proceeds,
@@ -1823,6 +1833,12 @@ def closeout_property(prop_id):
     if not prop:
         return jsonify({'error': 'Property not found'}), 404
 
+    # Apply overhead allocation from the closeout wizard before recalculating metrics.
+    # This saves the partner's decision about how much overhead to reimburse from this deal.
+    body = request.get_json(silent=True) or {}
+    overhead_allocation = body.get('overhead_allocation', 0) or 0
+    prop['overhead_allocation'] = overhead_allocation
+
     metrics = calc_property_metrics(prop)
     partner_b_check = metrics['distributable_profit'] - metrics['partner_share']
 
@@ -1836,6 +1852,7 @@ def closeout_property(prop_id):
         'total_costs':                 metrics['total_costs'],
         'gross_profit':                metrics['gross_profit'],
         'cash_invested':               metrics['cash_invested'],
+        'overhead_allocation':         overhead_allocation,
         'cash_in_deal':                metrics['cash_in_deal'],
         'total_draws':                 metrics['total_draws'],
         'distribution_base':           metrics['distribution_base'],
@@ -1866,6 +1883,78 @@ def update_flip_settings():
     data['settings'] = request.json
     save_data(data)
     return jsonify(data['settings'])
+
+
+# ---------------------------------------------------------------------------
+# Business Overhead routes
+# ---------------------------------------------------------------------------
+@app.route('/api/overhead', methods=['GET'])
+@login_required
+def get_overhead():
+    data = load_data()
+    expenses = data.get('overhead_expenses', [])
+    total_logged = sum(e.get('amount', 0) for e in expenses)
+    total_allocated = sum(
+        p.get('overhead_allocation', 0) or 0
+        for p in data.get('properties', [])
+        if p.get('status') == 'closed'
+    )
+    return jsonify({
+        'expenses': expenses,
+        'total_logged': total_logged,
+        'total_allocated': total_allocated,
+        'outstanding': max(total_logged - total_allocated, 0),
+    })
+
+
+@app.route('/api/overhead', methods=['POST'])
+@login_required
+def add_overhead_expense():
+    data = load_data()
+    expense = request.json or {}
+    expense['id'] = f"oh-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+    data.setdefault('overhead_expenses', []).append(expense)
+    save_data(data)
+    expenses = data['overhead_expenses']
+    total_logged = sum(e.get('amount', 0) for e in expenses)
+    total_allocated = sum(
+        p.get('overhead_allocation', 0) or 0
+        for p in data.get('properties', [])
+        if p.get('status') == 'closed'
+    )
+    return jsonify({
+        'expense': expense,
+        'expenses': expenses,
+        'total_logged': total_logged,
+        'total_allocated': total_allocated,
+        'outstanding': max(total_logged - total_allocated, 0),
+    })
+
+
+@app.route('/api/overhead/<expense_id>', methods=['DELETE'])
+@login_required
+def delete_overhead_expense(expense_id):
+    data = load_data()
+    before = len(data.get('overhead_expenses', []))
+    data['overhead_expenses'] = [
+        e for e in data.get('overhead_expenses', []) if e.get('id') != expense_id
+    ]
+    if len(data['overhead_expenses']) == before:
+        return jsonify({'error': 'Not found'}), 404
+    save_data(data)
+    expenses = data['overhead_expenses']
+    total_logged = sum(e.get('amount', 0) for e in expenses)
+    total_allocated = sum(
+        p.get('overhead_allocation', 0) or 0
+        for p in data.get('properties', [])
+        if p.get('status') == 'closed'
+    )
+    return jsonify({
+        'expenses': expenses,
+        'total_logged': total_logged,
+        'total_allocated': total_allocated,
+        'outstanding': max(total_logged - total_allocated, 0),
+    })
 
 
 # ---------------------------------------------------------------------------

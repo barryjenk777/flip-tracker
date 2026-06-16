@@ -963,6 +963,39 @@
                 <div class="card-title">Risk Alerts & Action Items</div>
                 <div id="all-flags" class="flag-list"></div>
             </div>
+
+            <!-- Business Overhead Pool -->
+            <div class="card" id="overhead-card-wrap">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                    <div class="card-title" style="margin-bottom:0;">Business Overhead</div>
+                    <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="toggleOverheadForm()">+ Log Expense</button>
+                </div>
+                <div id="overhead-stats-grid"></div>
+                <div id="overhead-form-wrap" style="display:none;margin-top:14px;padding:14px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+                        <div class="form-group"><label>Date</label><input type="date" id="oh-date"></div>
+                        <div class="form-group"><label>Category</label>
+                            <select id="oh-category" style="background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px;border-radius:6px;width:100%;font-size:14px;">
+                                <option value="Payroll">Payroll</option>
+                                <option value="Staging Supplies">Staging Supplies</option>
+                                <option value="Miscellaneous">Miscellaneous</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Description</label><input type="text" id="oh-description" placeholder="e.g. Employee — week of 6/15"></div>
+                        <div class="form-group"><label>Amount ($)</label><input type="number" id="oh-amount" step="0.01" placeholder="0.00"></div>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-secondary" onclick="toggleOverheadForm()">Cancel</button>
+                        <button class="btn btn-primary" onclick="submitOverheadExpense()">Save</button>
+                    </div>
+                </div>
+                <div id="overhead-log-wrap" style="margin-top:14px;">
+                    <button style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;padding:0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;" onclick="toggleOverheadLog()">
+                        Expense Log &nbsp;<span id="oh-log-toggle">▼ Show</span>
+                    </button>
+                    <div id="overhead-log-body" style="display:none;margin-top:8px;"></div>
+                </div>
+            </div>
         </div>
 
         <!-- ===== COMPLETED DEALS TAB ===== -->
@@ -1692,7 +1725,21 @@
             <!-- Step 3: Payout sign-off -->
             <div id="closeout-step-3" style="display:none;">
                 <div style="font-size:16px;font-weight:700;margin-bottom:6px;">Final Payout Sign-Off</div>
-                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Both parties should review these numbers before the books are locked permanently.</div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">Both parties should review these numbers before the books are locked permanently.</div>
+                <!-- Overhead reimbursement toggle -->
+                <div style="background:rgba(79,195,247,0.06);border:1px solid rgba(79,195,247,0.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:13px;font-weight:600;color:var(--text-primary);">Business Overhead Reimbursement</span>
+                        <div style="display:flex;gap:6px;">
+                            <button type="button" id="overhead-skip-btn" onclick="setCloseoutOverhead(false)" class="btn btn-secondary" style="font-size:12px;padding:4px 12px;background:var(--bg-card);border-color:var(--border);">Skip</button>
+                            <button type="button" id="overhead-include-btn" onclick="setCloseoutOverhead(true)" class="btn btn-secondary" style="font-size:12px;padding:4px 12px;">Include</button>
+                        </div>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-muted);" id="overhead-balance-label">Outstanding balance: loading...</div>
+                    <div id="overhead-amount-row" style="display:none;margin-top:10px;">
+                        <input type="number" id="closeout-overhead-amount" step="0.01" placeholder="Amount to reimburse from this deal" style="width:100%;background:var(--bg-secondary);border:1px solid var(--accent);color:var(--text-primary);padding:8px 10px;border-radius:6px;font-size:14px;box-sizing:border-box;" oninput="updateCloseoutDistribution()">
+                    </div>
+                </div>
                 <div id="closeout-payout-summary"></div>
                 <div style="margin-top:14px;padding:12px 14px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border);">
                     <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
@@ -2236,6 +2283,7 @@ function renderAll() {
     renderExpenses();
     renderAnalysis();
     renderTaxPnl();
+    renderOverheadCard();
 }
 
 /* ── Quick Stage Advance ──────────────────────────────────────────── */
@@ -2306,33 +2354,29 @@ function closeoutGoToStep(step) {
     }
 
     if (step === 3) {
-        const splitPct   = m.partner_split_pct || 50;
-        const partnerB   = (m.distributable_profit || 0) - (m.partner_share || 0);
-        document.getElementById('closeout-payout-summary').innerHTML = `
-            <div style="background:var(--bg-primary);border-radius:8px;padding:14px 16px;margin-bottom:4px;">
-                <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;">
-                    <span style="color:var(--text-secondary);">${m.net_proceeds_at_close > 0 ? 'Sale CD Net Proceeds' : 'Est. Net Profit'}</span>
-                    <span style="color:var(--accent);font-weight:600;">${fmt(m.distribution_base || m.gross_profit)}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;">
-                    <span style="color:var(--text-secondary);">Capital Returned</span>
-                    <span style="color:var(--yellow);font-weight:600;">-${fmt(m.cash_invested || 0)}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:12px;">
-                    <span style="color:var(--text-secondary);">Distributable Profit (${splitPct}% / ${100-splitPct}% split)</span>
-                    <span style="color:var(--green);font-weight:600;">${fmt(m.distributable_profit || 0)}</span>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <div style="background:rgba(79,195,247,0.08);border:2px solid rgba(79,195,247,0.3);border-radius:8px;padding:14px;text-align:center;">
-                        <div style="font-size:10px;color:var(--accent);text-transform:uppercase;font-weight:700;margin-bottom:6px;">Barry</div>
-                        <div style="font-size:24px;font-weight:800;color:var(--accent);">+${fmt(m.partner_total || 0)}</div>
-                    </div>
-                    <div style="background:rgba(102,187,106,0.08);border:2px solid rgba(102,187,106,0.3);border-radius:8px;padding:14px;text-align:center;">
-                        <div style="font-size:10px;color:var(--green);text-transform:uppercase;font-weight:700;margin-bottom:6px;">Non-Barry</div>
-                        <div style="font-size:24px;font-weight:800;color:var(--green);">+${fmt(partnerB)}</div>
-                    </div>
-                </div>
-            </div>`;
+        // Reset overhead toggle state
+        _closeoutIncludeOverhead = false;
+        const skipBtn    = document.getElementById('overhead-skip-btn');
+        const includeBtn = document.getElementById('overhead-include-btn');
+        const amtRow     = document.getElementById('overhead-amount-row');
+        const amtInput   = document.getElementById('closeout-overhead-amount');
+        if (skipBtn)    { skipBtn.style.background = 'var(--bg-card)'; skipBtn.style.borderColor = 'var(--border)'; skipBtn.style.color = ''; }
+        if (includeBtn) { includeBtn.style.background = ''; includeBtn.style.borderColor = ''; includeBtn.style.color = ''; }
+        if (amtRow)    amtRow.style.display = 'none';
+        if (amtInput)  amtInput.value = '';
+
+        // Show outstanding overhead balance in the toggle section
+        const balLabel = document.getElementById('overhead-balance-label');
+        if (balLabel) {
+            const outstanding = overheadData.outstanding || 0;
+            balLabel.textContent = outstanding > 0
+                ? `Outstanding balance: ${fmt(outstanding)} — Barry is owed this from the business overhead pool.`
+                : 'No outstanding overhead balance logged yet.';
+        }
+
+        // Draw the initial distribution (no overhead)
+        updateCloseoutDistribution();
+
         const cb  = document.getElementById('closeout-confirm-check');
         const btn = document.getElementById('closeout-confirm-btn');
         if (cb)  cb.checked  = false;
@@ -2342,9 +2386,18 @@ function closeoutGoToStep(step) {
 
 async function submitCloseout() {
     if (!closeoutPropertyId) return;
-    const res = await apiFetch(`/api/flips/${closeoutPropertyId}/closeout`, { method: 'POST' });
+    let overheadAllocation = 0;
+    if (_closeoutIncludeOverhead) {
+        overheadAllocation = parseFloat(document.getElementById('closeout-overhead-amount').value) || 0;
+    }
+    const res = await apiFetch(`/api/flips/${closeoutPropertyId}/closeout`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ overhead_allocation: overheadAllocation })
+    });
     if (!res || !res.ok) { showToast('❌ Closeout failed — try again'); return; }
     await loadFlips();
+    await loadOverhead();
 
     const prop = flipData.properties.find(p => p.id === closeoutPropertyId);
     const snap = prop && prop.closeout_snapshot;
@@ -3856,9 +3909,15 @@ function renderPropertyPnl(pnl, prop) {
         `}
         ${pnl.cash_invested > 0 ? `
         <tr><td class="pnl-sub">Less: Return of Capital (your cash invested)</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed first</td><td class="pnl-amount pnl-negative">-${f(pnl.cash_invested)}</td></tr>
+        ${pnl.overhead_allocation > 0 ? `
+        <tr><td class="pnl-sub">Less: Overhead Reimbursement</td><td style="font-size:10px;color:var(--text-muted)">Payroll, staging, misc</td><td class="pnl-amount pnl-negative">-${f(pnl.overhead_allocation)}</td></tr>
+        ` : ''}
         <tr><td class="pnl-sub pnl-total">Distributable to Partners</td><td></td><td class="pnl-amount pnl-total ${pnl.distributable_profit >= 0 ? 'pnl-positive' : 'pnl-negative'}">${f(pnl.distributable_profit)}</td></tr>
         <tr><td style="height:4px" colspan="3"></td></tr>
         <tr><td class="pnl-sub">Partner A — Return of Capital</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed</td><td class="pnl-amount pnl-positive">${f(pnl.cash_invested)}</td></tr>
+        ${pnl.overhead_allocation > 0 ? `
+        <tr><td class="pnl-sub">Partner A — Overhead Reimbursement</td><td style="font-size:10px;color:var(--text-muted)">Reimbursed</td><td class="pnl-amount pnl-positive">${f(pnl.overhead_allocation)}</td></tr>
+        ` : ''}
         <tr><td class="pnl-sub">Partner A — Profit Share (${pnl.partner_split_pct}% of distributable)</td><td></td><td class="pnl-amount pnl-positive">${f(pnl.partner_a_share)}</td></tr>
         <tr><td class="pnl-sub" style="font-weight:700;">Partner A TOTAL</td><td></td><td class="pnl-amount pnl-positive" style="font-weight:700;">${f(pnl.partner_a_total)}</td></tr>
         <tr><td style="height:4px" colspan="3"></td></tr>
@@ -5793,9 +5852,198 @@ async function runVendorBackfill() {
     } catch(e) {}
 }
 
+/* ── Business Overhead ──────────────────────────────────────────────── */
+let overheadData = {expenses: [], total_logged: 0, total_allocated: 0, outstanding: 0};
+let _overheadLogOpen = false;
+let _closeoutIncludeOverhead = false;
+
+async function loadOverhead() {
+    const res = await apiFetch('/api/overhead');
+    if (res) { overheadData = res; renderOverheadCard(); }
+}
+
+function renderOverheadCard() {
+    const el = document.getElementById('overhead-stats-grid');
+    if (!el) return;
+    const { total_logged, total_allocated, outstanding } = overheadData;
+    el.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:4px;">
+            <div class="stat-card">
+                <div class="stat-label">Total Logged</div>
+                <div class="stat-value" style="font-size:20px;">${fmt(total_logged)}</div>
+                <div class="stat-sub">Payroll, staging, misc</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Allocated to Deals</div>
+                <div class="stat-value" style="font-size:20px;color:var(--yellow);">${fmt(total_allocated)}</div>
+                <div class="stat-sub">Reimbursed at close</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-label">Outstanding Balance</div>
+                <div class="stat-value" style="font-size:20px;">${fmt(outstanding)}</div>
+                <div class="stat-sub">Barry is owed this</div>
+            </div>
+        </div>`;
+    if (_overheadLogOpen) renderOverheadLog();
+}
+
+function toggleOverheadForm() {
+    const el = document.getElementById('overhead-form-wrap');
+    if (!el) return;
+    const open = el.style.display === 'none' || el.style.display === '';
+    el.style.display = open && el.style.display === 'none' ? '' : 'none';
+    if (el.style.display !== 'none') {
+        const today = new Date().toISOString().split('T')[0];
+        const d = document.getElementById('oh-date');
+        if (d && !d.value) d.value = today;
+    }
+}
+
+async function submitOverheadExpense() {
+    const date        = (document.getElementById('oh-date') || {}).value || '';
+    const category    = (document.getElementById('oh-category') || {}).value || 'Miscellaneous';
+    const description = ((document.getElementById('oh-description') || {}).value || '').trim();
+    const amount      = parseFloat((document.getElementById('oh-amount') || {}).value) || 0;
+    if (!amount || amount <= 0) { showToast('Enter an amount'); return; }
+    if (!description) { showToast('Enter a description'); return; }
+    const res = await apiFetch('/api/overhead', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ date, category, description, amount })
+    });
+    if (res) {
+        overheadData = res;
+        renderOverheadCard();
+        if (_overheadLogOpen) renderOverheadLog();
+        document.getElementById('oh-description').value = '';
+        document.getElementById('oh-amount').value = '';
+        const fw = document.getElementById('overhead-form-wrap');
+        if (fw) fw.style.display = 'none';
+        showToast('Overhead expense logged');
+    }
+}
+
+async function deleteOverheadExpense(id) {
+    if (!confirm('Delete this overhead expense?')) return;
+    const res = await apiFetch(`/api/overhead/${id}`, { method: 'DELETE' });
+    if (res) {
+        overheadData = res;
+        renderOverheadCard();
+        renderOverheadLog();
+    }
+}
+
+function toggleOverheadLog() {
+    _overheadLogOpen = !_overheadLogOpen;
+    const body   = document.getElementById('overhead-log-body');
+    const toggle = document.getElementById('oh-log-toggle');
+    if (!body) return;
+    body.style.display = _overheadLogOpen ? '' : 'none';
+    if (toggle) toggle.textContent = _overheadLogOpen ? '▲ Hide' : '▼ Show';
+    if (_overheadLogOpen) renderOverheadLog();
+}
+
+function renderOverheadLog() {
+    const el = document.getElementById('overhead-log-body');
+    if (!el) return;
+    const exps = (overheadData.expenses || []).slice().reverse();
+    if (!exps.length) {
+        el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:10px;text-align:center;">No overhead expenses logged yet.</div>';
+        return;
+    }
+    el.innerHTML = `
+        <table class="data-table">
+            <thead><tr><th>Date</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th></th></tr></thead>
+            <tbody>${exps.map(e => `
+                <tr>
+                    <td style="font-size:12px;">${e.date || '—'}</td>
+                    <td style="font-size:12px;">${e.category || ''}</td>
+                    <td style="font-size:12px;">${e.description || ''}</td>
+                    <td style="text-align:right;color:var(--yellow);font-size:13px;">${fmt(e.amount)}</td>
+                    <td style="text-align:center;">
+                        <button onclick="deleteOverheadExpense('${e.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;line-height:1;" title="Delete">✕</button>
+                    </td>
+                </tr>`).join('')}
+            </tbody>
+        </table>`;
+}
+
+function setCloseoutOverhead(include) {
+    _closeoutIncludeOverhead = include;
+    const skipBtn    = document.getElementById('overhead-skip-btn');
+    const includeBtn = document.getElementById('overhead-include-btn');
+    const amtRow     = document.getElementById('overhead-amount-row');
+    const amtInput   = document.getElementById('closeout-overhead-amount');
+    if (include) {
+        if (includeBtn) { includeBtn.style.background = 'var(--accent)'; includeBtn.style.borderColor = 'var(--accent)'; includeBtn.style.color = '#111'; }
+        if (skipBtn)    { skipBtn.style.background = ''; skipBtn.style.borderColor = ''; skipBtn.style.color = ''; }
+        if (amtRow)     amtRow.style.display = '';
+        if (amtInput && !amtInput.value) {
+            const outstanding = overheadData.outstanding || 0;
+            if (outstanding > 0) amtInput.value = outstanding.toFixed(2);
+        }
+    } else {
+        if (skipBtn)    { skipBtn.style.background = 'var(--bg-card)'; skipBtn.style.borderColor = 'var(--border)'; }
+        if (includeBtn) { includeBtn.style.background = ''; includeBtn.style.borderColor = ''; includeBtn.style.color = ''; }
+        if (amtRow)    amtRow.style.display = 'none';
+        if (amtInput)  amtInput.value = '';
+    }
+    updateCloseoutDistribution();
+}
+
+function updateCloseoutDistribution() {
+    const prop = flipData.properties.find(p => p.id === closeoutPropertyId);
+    if (!prop) return;
+    const m        = prop.metrics;
+    const splitPct = m.partner_split_pct || 50;
+    const distBase = m.distribution_base || m.gross_profit || 0;
+    const cashInv  = m.cash_invested || 0;
+    let overheadAmt = 0;
+    if (_closeoutIncludeOverhead) {
+        overheadAmt = parseFloat((document.getElementById('closeout-overhead-amount') || {}).value) || 0;
+    }
+    const distributable = distBase - cashInv - overheadAmt;
+    const barryShare    = distributable * (splitPct / 100);
+    const chrisShare    = distributable * ((100 - splitPct) / 100);
+    const barryTotal    = cashInv + overheadAmt + barryShare;
+
+    document.getElementById('closeout-payout-summary').innerHTML = `
+        <div style="background:var(--bg-primary);border-radius:8px;padding:14px 16px;margin-bottom:4px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;">
+                <span style="color:var(--text-secondary);">${(m.net_proceeds_at_close||0) > 0 ? 'Sale CD Net Proceeds' : 'Est. Net Profit'}</span>
+                <span style="color:var(--accent);font-weight:600;">${fmt(distBase)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;">
+                <span style="color:var(--text-secondary);">Capital Returned to Barry</span>
+                <span style="color:var(--yellow);font-weight:600;">-${fmt(cashInv)}</span>
+            </div>
+            ${overheadAmt > 0 ? `
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;">
+                <span style="color:var(--text-secondary);">Overhead Reimbursement to Barry</span>
+                <span style="color:var(--accent);font-weight:600;">-${fmt(overheadAmt)}</span>
+            </div>` : ''}
+            <div style="display:flex;justify-content:space-between;font-size:13px;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                <span style="color:var(--text-secondary);">Distributable Profit (${splitPct}% / ${100-splitPct}% split)</span>
+                <span style="color:var(--green);font-weight:600;">${fmt(distributable)}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:rgba(79,195,247,0.08);border:2px solid rgba(79,195,247,0.3);border-radius:8px;padding:14px;text-align:center;">
+                    <div style="font-size:10px;color:var(--accent);text-transform:uppercase;font-weight:700;margin-bottom:6px;">Barry</div>
+                    <div style="font-size:24px;font-weight:800;color:var(--accent);">+${fmt(barryTotal)}</div>
+                    ${overheadAmt > 0 ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">incl. ${fmt(overheadAmt)} overhead</div>` : ''}
+                </div>
+                <div style="background:rgba(102,187,106,0.08);border:2px solid rgba(102,187,106,0.3);border-radius:8px;padding:14px;text-align:center;">
+                    <div style="font-size:10px;color:var(--green);text-transform:uppercase;font-weight:700;margin-bottom:6px;">Non-Barry</div>
+                    <div style="font-size:24px;font-weight:800;color:var(--green);">+${fmt(chrisShare)}</div>
+                </div>
+            </div>
+        </div>`;
+}
+
 // ---- Init ----
 loadFlips();
 loadProspects();
+loadOverhead();
 initCmdYear();
 loadVendorDefaults();
 runVendorBackfill();
