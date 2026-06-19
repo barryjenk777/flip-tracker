@@ -2514,7 +2514,7 @@ function renderCompletedDeals() {
             ${closed.map(p => {
                 const s = p.closeout_snapshot;
                 const rc = (s.roi||0) >= 20 ? 'var(--green)' : (s.roi||0) >= 10 ? 'var(--yellow)' : 'var(--red)';
-                return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="selectedPropertyId='${p.id}';switchTab('property');renderAll();" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background=''">
+                return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="selectedPropertyId='${p.id}';['property-selector','expense-selector','analysis-selector','tax-selector'].forEach(k=>_selectorShowClosed[k]=true);switchTab('property');renderAll();" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background=''">
                     <td style="padding:10px;font-weight:600;">${p.address}<div style="font-size:11px;color:var(--text-muted);font-weight:400;">${p.city}, ${p.state}</div></td>
                     <td style="padding:10px;text-align:right;color:var(--text-secondary);">${s.purchase_date||'—'}</td>
                     <td style="padding:10px;text-align:right;color:var(--text-secondary);">${s.closeout_date||'—'}</td>
