@@ -66,6 +66,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .empty-state small { font-size: 12px; }
 
 .loading { padding: 40px; text-align: center; color: #6b7280; font-size: 14px; }
+
+.scope-item.blocked { background: #fffbeb; }
+.blocked-banner { display: flex; align-items: center; gap: 6px; padding: 7px 10px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; margin-bottom: 10px; font-size: 12px; color: #92400e; font-weight: 600; }
+.scope-item.blocked .item-name { color: #9ca3af; }
+.scope-item.blocked .item-budget { color: #d1d5db; }
+.scope-item.blocked .pct-btns { pointer-events: none; opacity: 0.35; }
+.scope-item.blocked .notes-input { background: #f9fafb; color: #9ca3af; pointer-events: none; cursor: not-allowed; }
+.scope-item.blocked .photo-btn { pointer-events: none; opacity: 0.35; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -148,6 +156,7 @@ function selectProperty(propId) {
 function renderProp(prop) {
   const metrics = prop.metrics || {};
   const scope = prop.scope_items || [];
+  const blocking = prop.blocking || {};
 
   // Group by phase
   const phases = {};
@@ -213,12 +222,17 @@ function renderProp(prop) {
       const curPct = cur.completion_pct !== undefined ? cur.completion_pct : item.completion_pct;
       const curNotes = cur.notes !== undefined ? cur.notes : (item.notes || '');
       const photoCount = (item.photos || []).length;
+      const block = blocking[item.id] || {};
+      const isBlocked = block.blocked || false;
 
-      html += `<div class="scope-item" id="item-${item.id}">
+      html += `<div class="scope-item${isBlocked ? ' blocked' : ''}" id="item-${item.id}">
         <div class="item-top">
           <div class="item-name">${item.name}</div>
           <div class="item-budget">$${item.budget.toLocaleString()}</div>
         </div>
+        ${isBlocked
+          ? `<div class="blocked-banner">🔒 ${block.reason || 'Blocked by a prior phase'}</div>`
+          : ''}
         <div class="pct-btns">
           ${[0,25,50,75,100].map(p =>
             `<button class="pct-btn ${curPct === p ? 'active' : ''}" onclick="setPct('${item.id}', ${p}, this)">${p}%</button>`

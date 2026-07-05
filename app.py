@@ -3275,6 +3275,102 @@ for _wcp_ph, _wcp_ord, _wcp_exps in WCP_SCHEMA:
         _WCP_EXPENSE_LOOKUP[_wcp_exp.lower().strip()] = (_wcp_ph, _wcp_ord, _wcp_exp)
 
 
+# ---------------------------------------------------------------------------
+# Construction critical-path blocking
+# ---------------------------------------------------------------------------
+# Threshold: a blocking phase must reach this completion % before the next opens.
+# Lower (e.g. to 75) to allow parallel-track tolerance between adjacent phases.
+CRITICAL_PATH_THRESHOLD = 100
+
+# Inter-phase blocking chain: phase_order → predecessor phase_order.
+# Forms a recursive chain — if a predecessor has no scope items on this property
+# the check walks further back until it finds one that does (or reaches the start).
+# Exterior phases (6, 10) are intentionally absent; exterior work runs in parallel
+# with interior and does not gate anything.
+PHASE_CRITICAL_PREDECESSORS = {
+    4:  2,   # Framing requires Site Prep (clear site before structural)
+    5:  4,   # Utility Rough-Ins require Framing (or Site Prep if no framing)
+    7:  5,   # Interior Work requires Utility Rough-Ins (drywall after rough-in inspection)
+    8:  7,   # Utility Finishes require Interior Work (fixtures after walls done)
+    9:  7,   # Interior Finishes require Interior Work (cabinets after drywall/paint)
+    11: 9,   # Interior Miscellaneous requires Interior Finishes (final clean is last)
+}
+
+# Intra-phase item blocking: item name → item that must complete first within the phase.
+#
+# Design note — item-level sub-ordering vs. named-predecessor map:
+#   Sub-ordering (adding an item_order int to each scope item) is more flexible but
+#   requires maintaining a parallel ordering structure alongside WCP_SCHEMA.
+#   The named-predecessor map is simpler and explicit. The one real-world intra-phase
+#   exception is Paint → Flooring inside INTERIOR WORK: WCP_SCHEMA lists Flooring
+#   before Interior Painting (matching the lender's locked form layout), but
+#   construction requires paint to cure before flooring goes down. Rather than
+#   reordering the lender-locked schema, we declare the dependency here.
+ITEM_CRITICAL_PREDECESSORS = {
+    'Flooring': 'Interior Painting',
+}
+
+
+def _is_phase_blocked(ph_order, phase_pct_map, phase_name_map, depth=0):
+    """Walk the predecessor chain, skipping phases with no scope items on this property."""
+    if depth > 12:
+        return False, ''
+    pred_order = PHASE_CRITICAL_PREDECESSORS.get(ph_order)
+    if pred_order is None:
+        return False, ''
+    if pred_order not in phase_pct_map:
+        return _is_phase_blocked(pred_order, phase_pct_map, phase_name_map, depth + 1)
+    pred_pct = phase_pct_map[pred_order]
+    if pred_pct < CRITICAL_PATH_THRESHOLD:
+        pred_name = phase_name_map.get(pred_order, f'Phase {pred_order}')
+        return True, f'Blocked: finish {pred_name.title()} first ({int(pred_pct)}% done)'
+    return False, ''
+
+
+def _compute_scope_blocking(prop):
+    """
+    Returns {item_id: {'blocked': bool, 'reason': str}} for all scope items.
+    Computed on the fly — never stored. Combines:
+      1. Inter-phase chain via PHASE_CRITICAL_PREDECESSORS (recursive predecessor walk)
+      2. Intra-phase named-item blocking via ITEM_CRITICAL_PREDECESSORS
+    """
+    scope = prop.get('scope_items', [])
+    if not scope:
+        return {}
+
+    phase_pct_map = {}
+    phase_name_map = {}
+    for _, ph_order, _ in WCP_SCHEMA:
+        items_in_phase = [i for i in scope if i.get('phase_order') == ph_order]
+        if not items_in_phase:
+            continue
+        phase_name_map[ph_order] = items_in_phase[0]['phase']
+        total_budget = sum(i['budget'] for i in items_in_phase)
+        if total_budget > 0:
+            weighted = sum(i['budget'] * i['completion_pct'] / 100.0 for i in items_in_phase)
+            phase_pct_map[ph_order] = round(weighted / total_budget * 100, 1)
+        else:
+            phase_pct_map[ph_order] = 100.0
+
+    item_name_pct = {i['name']: i['completion_pct'] for i in scope}
+
+    result = {}
+    for item in scope:
+        blocked, reason = _is_phase_blocked(item['phase_order'], phase_pct_map, phase_name_map)
+
+        if not blocked:
+            pred_item_name = ITEM_CRITICAL_PREDECESSORS.get(item['name'])
+            if pred_item_name and pred_item_name in item_name_pct:
+                pred_pct = item_name_pct[pred_item_name]
+                if pred_pct < CRITICAL_PATH_THRESHOLD:
+                    blocked = True
+                    reason = f'Blocked: finish {pred_item_name} first ({int(pred_pct)}% done)'
+
+        result[item['id']] = {'blocked': blocked, 'reason': reason}
+
+    return result
+
+
 def _parse_dollar_v(s):
     if not s:
         return 0.0
@@ -3309,6 +3405,7 @@ def _make_scope_item(phase, phase_order, name, budget):
         'name': name,
         'budget': round(float(budget), 2),
         'completion_pct': 0,
+        'drawn_pct': 0,
         'notes': '',
         'photos': [],
         'last_updated': None,
@@ -3598,6 +3695,94 @@ def set_project_plan(prop_id):
     return jsonify({'ok': True, 'metrics': calc_project_metrics(prop)})
 
 
+@app.route('/api/flips/<prop_id>/draws/summary', methods=['GET'])
+@login_required
+def get_draw_summary(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+
+    scope = prop.get('scope_items', [])
+    draws = (prop.get('project_plan') or {}).get('draws', [])
+    draw_number = len(draws) + 1
+    addr = f"{prop.get('address', '')} {prop.get('city', '')} {prop.get('state', '')}".strip()
+    today = datetime.now().strftime('%B %d, %Y')
+
+    # Build per-phase eligible amounts: completion_pct minus already-drawn pct
+    phase_buckets = {ph_order: {'phase': ph, 'phase_order': ph_order, 'items': [], 'subtotal': 0.0}
+                     for ph, ph_order, _ in WCP_SCHEMA}
+    total_eligible = 0.0
+    draw_items_snapshot = []
+
+    for item in scope:
+        drawn_pct = item.get('drawn_pct', 0) or 0
+        eligible_pct = item['completion_pct'] - drawn_pct
+        if eligible_pct <= 0:
+            continue
+        eligible_amt = round(item['budget'] * eligible_pct / 100.0, 2)
+        if eligible_amt <= 0:
+            continue
+        pg = phase_buckets[item['phase_order']]
+        pg['items'].append({
+            'id': item['id'],
+            'name': item['name'],
+            'budget': item['budget'],
+            'completion_pct': item['completion_pct'],
+            'drawn_pct': drawn_pct,
+            'eligible_pct': eligible_pct,
+            'eligible_amt': eligible_amt,
+        })
+        pg['subtotal'] = round(pg['subtotal'] + eligible_amt, 2)
+        total_eligible = round(total_eligible + eligible_amt, 2)
+        draw_items_snapshot.append({
+            'item_id': item['id'],
+            'name': item['name'],
+            'phase': item['phase'],
+            'eligible_pct': eligible_pct,
+            'amount': eligible_amt,
+        })
+
+    # Preserve WCP phase order in output
+    active_phases = [phase_buckets[ph_order] for _, ph_order, _ in WCP_SCHEMA
+                     if phase_buckets[ph_order]['items']]
+
+    if not active_phases:
+        return jsonify({
+            'ok': True, 'total_eligible': 0.0, 'phases': [],
+            'draw_items': [], 'draw_number': draw_number,
+            'formatted_text': 'No drawable amounts at this time.\nAll items are either at 0% or already drawn.',
+        })
+
+    # Plain-text summary formatted for copy/paste to lender
+    lines = [
+        f'DRAW REQUEST — {addr}',
+        f'Date: {today}',
+        f'Draw #{draw_number}',
+        '',
+    ]
+    for pg in active_phases:
+        budget_total = sum(i['budget'] for i in pg['items'])
+        lines.append(f"{pg['phase']:<44} ${budget_total:>10,.2f} budget")
+        for it in pg['items']:
+            pct_str = f"{it['completion_pct']}% complete"
+            lines.append(f"  {it['name']:<42} {pct_str:<18} ${it['eligible_amt']:>10,.2f}")
+        lines.append(f"  {'Subtotal:':<60} ${pg['subtotal']:>10,.2f}")
+        lines.append('')
+    lines.append(f"{'TOTAL DRAW REQUEST:':<62} ${total_eligible:>10,.2f}")
+
+    return jsonify({
+        'ok': True,
+        'draw_number': draw_number,
+        'address': addr,
+        'date': today,
+        'phases': active_phases,
+        'draw_items': draw_items_snapshot,
+        'total_eligible': total_eligible,
+        'formatted_text': '\n'.join(lines),
+    })
+
+
 @app.route('/api/flips/<prop_id>/draws', methods=['POST'])
 @login_required
 def add_draw_request(prop_id):
@@ -3613,6 +3798,7 @@ def add_draw_request(prop_id):
         'draw_number': len(draws) + 1,
         'requested_date': body.get('requested_date', datetime.now().strftime('%Y-%m-%d')),
         'total_requested': float(body.get('total_requested') or 0),
+        'items': body.get('items', []),
         'status': 'pending',
         'amount_received': 0.0,
         'received_date': None,
@@ -3637,11 +3823,23 @@ def update_draw(prop_id, draw_id):
     if not draw:
         return jsonify({'error': 'Draw not found'}), 404
     body = request.get_json(silent=True) or {}
+    prev_status = draw.get('status')
     for f in ('status', 'received_date', 'notes'):
         if f in body:
             draw[f] = body[f]
     if 'amount_received' in body:
         draw['amount_received'] = float(body['amount_received'] or 0)
+    # When a draw transitions to received, stamp drawn_pct on included scope items
+    # so the next draw summary doesn't double-count them.
+    if body.get('status') == 'received' and prev_status != 'received':
+        scope = prop.get('scope_items', [])
+        item_by_id = {i['id']: i for i in scope}
+        for di in draw.get('items', []):
+            si = item_by_id.get(di.get('item_id'))
+            if si:
+                si['drawn_pct'] = min(
+                    (si.get('drawn_pct', 0) or 0) + (di.get('eligible_pct', 0) or 0), 100
+                )
     prop['project_plan'] = plan
     save_data(data)
     return jsonify({'ok': True, 'metrics': calc_project_metrics(prop)})
@@ -3662,6 +3860,7 @@ def inspect_properties():
             'scope_items': prop.get('scope_items', []),
             'project_plan': prop.get('project_plan', {}),
             'metrics': calc_project_metrics(prop),
+            'blocking': _compute_scope_blocking(prop),
         })
     return jsonify({'properties': result})
 
