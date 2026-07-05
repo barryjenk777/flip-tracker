@@ -6246,6 +6246,7 @@ function renderProjectCard(flip, data) {
                 <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="importScopeDoc('${flip.id}')">
                     ${hasScope ? 'Re-import Scope' : 'Import WCP Budget'}
                 </button>
+                ${!hasScope ? `<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;opacity:0.85;" onclick="bootstrapFromExpenses('${flip.id}')">Seed from Expenses</button>` : ''}
             </div>
         </div>
 
@@ -6293,6 +6294,21 @@ function renderProjectCard(flip, data) {
 
 async function importScopeDoc(propId) {
     document.getElementById('scope-file-' + propId).click();
+}
+
+async function bootstrapFromExpenses(propId) {
+    const res = await apiFetch(`/api/flips/${propId}/scope/bootstrap`, { method: 'POST' });
+    const json = await res.json();
+    if (json.ok) {
+        if (json.count > 0) {
+            showToast(`Seeded ${json.count} scope items from expense history.`);
+            loadProjects();
+        } else {
+            showToast('No new items created. Check that expenses are categorized (Flooring, Paint, Labor, etc.).');
+        }
+    } else {
+        showToast(json.error || 'Seed failed.', true);
+    }
 }
 
 async function handleScopeFile(propId, input) {

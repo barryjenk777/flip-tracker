@@ -3310,6 +3310,43 @@ ITEM_CRITICAL_PREDECESSORS = {
     'Flooring': 'Interior Painting',
 }
 
+# Maps expense category → list of (phase_name, phase_order, wcp_item_name, fraction).
+# Fraction splits a category across two WCP items where one line covers both rough-in
+# and finish work (e.g. Electrical labor covers Rough-In AND Fixtures).
+# "General Contractor" is intentionally mapped to Drywall as the closest catch-all
+# for bulk labor invoices that span interior work. Windows & Doors splits 65/35.
+EXPENSE_TO_WCP_SCOPE = {
+    'Permits':            [('PRE-CONSTRUCTION & DESIGN', 1, 'Permits', 1.0)],
+    'Dumpster':           [('SITE PREPARATION', 2, 'Dumpsters & Trash Removal', 1.0)],
+    'Labor - General':    [('SITE PREPARATION', 2, 'Interior Demolition', 1.0)],
+    'Repairs - Foundation': [('FOUNDATION WORK', 3, 'Foundation & Concrete', 1.0)],
+    'Roofing':            [('FRAMING', 4, 'Roofing & Flashing', 1.0)],
+    'Labor - Electrical': [
+        ('UTILITY ROUGH-INS', 5, 'Electrical Rough-In', 0.60),
+        ('UTILITY FINISHES', 8, 'Electrical Fixtures', 0.40),
+    ],
+    'Labor - Plumbing': [
+        ('UTILITY ROUGH-INS', 5, 'Plumbing Rough-in', 0.60),
+        ('UTILITY FINISHES', 8, 'Plumbing Fixtures', 0.40),
+    ],
+    'Labor - HVAC': [
+        ('UTILITY ROUGH-INS', 5, 'Mechanical Rough-in', 0.60),
+        ('UTILITY FINISHES', 8, 'Mechanical Finishes', 0.40),
+    ],
+    'Windows & Doors': [
+        ('EXTERIOR FINISHES', 6, 'Windows', 0.65),
+        ('EXTERIOR FINISHES', 6, 'Exterior Doors & Frames', 0.35),
+    ],
+    'Building Materials': [('INTERIOR WORK', 7, 'Drywall', 1.0)],
+    'General Contractor': [('INTERIOR WORK', 7, 'Drywall', 1.0)],
+    'Paint':              [('INTERIOR WORK', 7, 'Interior Painting', 1.0)],
+    'Flooring':           [('INTERIOR WORK', 7, 'Flooring', 1.0)],
+    'Labor - Kitchen':    [('INTERIOR FINISHES', 9, 'Kitchen Cabinets', 1.0)],
+    'Appliances':         [('INTERIOR FINISHES', 9, 'Appliances', 1.0)],
+    'Landscaping':        [('EXTERIOR MISCELLANEOUS', 10, 'Landscaping', 1.0)],
+    'Staging':            [('INTERIOR MISCELLANEOUS', 11, 'Staging', 1.0)],
+}
+
 
 def _is_phase_blocked(ph_order, phase_pct_map, phase_name_map, depth=0):
     """Walk the predecessor chain, skipping phases with no scope items on this property."""
@@ -3638,6 +3675,56 @@ def import_scope(prop_id):
     prop['scope_items'] = merged
     save_data(data)
     return jsonify({'ok': True, 'count': len(merged), 'scope_items': merged,
+                    'metrics': calc_project_metrics(prop)})
+
+
+@app.route('/api/flips/<prop_id>/scope/bootstrap', methods=['POST'])
+@login_required
+def bootstrap_scope_from_expenses(prop_id):
+    """Create WCP scope items inferred from the property's existing expense log.
+    Only creates items for categories where expenses exist; skips any WCP item name
+    that already has a scope item (so it never clobbers a real WCP PDF import).
+    Budget is set to actual dollars spent. Completion starts at 0 — inspector confirms.
+    """
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+
+    expense_totals = defaultdict(float)
+    for exp in prop.get('expenses', []):
+        cat = exp.get('category', '')
+        amt = float(exp.get('amount', 0) or 0)
+        expense_totals[cat] += amt
+
+    existing_names = {item['name'] for item in prop.get('scope_items', [])}
+
+    # Accumulate budget per WCP item name (multiple expense categories can map to the same item)
+    accumulated = {}
+    for cat, total in expense_totals.items():
+        mappings = EXPENSE_TO_WCP_SCOPE.get(cat)
+        if not mappings:
+            continue
+        for phase_name, phase_order, item_name, fraction in mappings:
+            allocated = round(total * fraction, 2)
+            if item_name in accumulated:
+                accumulated[item_name]['budget'] = round(accumulated[item_name]['budget'] + allocated, 2)
+            else:
+                accumulated[item_name] = {'phase': phase_name, 'phase_order': phase_order, 'budget': allocated}
+
+    new_items = []
+    for item_name, info in accumulated.items():
+        if item_name in existing_names:
+            continue
+        si = _make_scope_item(info['phase'], info['phase_order'], item_name, info['budget'])
+        si['notes'] = 'Seeded from expense log. Confirm actual completion via inspector app.'
+        new_items.append(si)
+
+    new_items.sort(key=lambda x: (x['phase_order'], x['name']))
+    prop['scope_items'] = prop.get('scope_items', []) + new_items
+    save_data(data)
+    return jsonify({'ok': True, 'count': len(new_items),
+                    'scope_items': prop['scope_items'],
                     'metrics': calc_project_metrics(prop)})
 
 
