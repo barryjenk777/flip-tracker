@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Inspection</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; font-size: 15px; }
+
+.header { background: #1a2740; color: white; padding: 14px 16px; position: sticky; top: 0; z-index: 100; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 17px; font-weight: 700; flex: 1; }
+.header .date { font-size: 12px; opacity: 0.7; }
+
+.prop-bar { background: white; border-bottom: 2px solid #e5e7eb; padding: 12px 16px; position: sticky; top: 53px; z-index: 99; }
+.prop-bar label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
+.prop-select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; background: white; -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+
+.progress-banner { background: white; margin: 12px 12px 0; border-radius: 12px; padding: 14px 16px; border: 1px solid #e5e7eb; }
+.progress-banner .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.progress-banner .label { font-size: 12px; color: #6b7280; font-weight: 600; }
+.progress-banner .val { font-size: 20px; font-weight: 800; color: #1a2740; }
+.progress-bar-outer { background: #e5e7eb; border-radius: 6px; height: 10px; overflow: hidden; }
+.progress-bar-inner { background: #2563eb; height: 100%; border-radius: 6px; transition: width 0.4s; }
+.pace-chip { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 700; }
+.pace-ok { background: #d1fae5; color: #065f46; }
+.pace-behind { background: #fee2e2; color: #991b1b; }
+.pace-ahead { background: #dbeafe; color: #1e40af; }
+
+.phase-section { margin: 12px 12px 0; background: white; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; }
+.phase-header { padding: 14px 16px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.phase-header h2 { font-size: 13px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; }
+.phase-pct { font-size: 13px; font-weight: 700; color: #2563eb; }
+.phase-items { padding: 0; }
+.phase-items.hidden { display: none; }
+
+.scope-item { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; }
+.scope-item:last-child { border-bottom: none; }
+.item-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.item-name { font-size: 14px; font-weight: 600; color: #111827; flex: 1; padding-right: 8px; }
+.item-budget { font-size: 12px; color: #6b7280; white-space: nowrap; }
+
+.pct-btns { display: flex; gap: 6px; margin-bottom: 10px; }
+.pct-btn { flex: 1; padding: 8px 4px; border: 1.5px solid #d1d5db; border-radius: 8px; background: white; font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; text-align: center; -webkit-tap-highlight-color: transparent; transition: all 0.15s; }
+.pct-btn.active { background: #1a2740; border-color: #1a2740; color: white; }
+.pct-btn:active { opacity: 0.75; }
+
+.notes-input { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; resize: none; height: 60px; background: #f9fafb; color: #111827; }
+.notes-input:focus { outline: none; border-color: #2563eb; background: white; }
+
+.photo-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.photo-btn { padding: 7px 12px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; font-size: 12px; font-weight: 600; color: #374151; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.photo-btn:active { opacity: 0.75; }
+.photo-count { font-size: 11px; color: #6b7280; }
+.photo-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.photo-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+
+.submit-area { padding: 16px 12px 32px; }
+.submit-btn { width: 100%; padding: 16px; background: #1a2740; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.submit-btn:disabled { opacity: 0.5; }
+.submit-btn:active { opacity: 0.85; }
+.submit-status { text-align: center; margin-top: 10px; font-size: 13px; color: #6b7280; }
+
+.empty-state { padding: 40px 20px; text-align: center; color: #9ca3af; }
+.empty-state p { font-size: 15px; margin-bottom: 8px; }
+.empty-state small { font-size: 12px; }
+
+.loading { padding: 40px; text-align: center; color: #6b7280; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Site Inspection</h1>
+  <div class="date" id="hdr-date"></div>
+</div>
+
+<div class="prop-bar">
+  <label>Select Property</label>
+  <select class="prop-select" id="prop-select" onchange="selectProperty(this.value)">
+    <option value="">Loading...</option>
+  </select>
+</div>
+
+<div id="main-content">
+  <div class="loading">Loading properties...</div>
+</div>
+
+<div class="submit-area" id="submit-area" style="display:none">
+  <button class="submit-btn" id="submit-btn" onclick="submitInspection()">Submit Inspection</button>
+  <div class="submit-status" id="submit-status"></div>
+</div>
+
+<input type="file" id="photo-file-input" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoFile(this)">
+
+<script>
+const TOKEN = new URLSearchParams(window.location.search).get('token') || '';
+let allProperties = [];
+let currentPropId = null;
+let pendingPhotoItemId = null;
+let changes = {};  // { item_id: { completion_pct, notes } }
+
+// Format today's date
+(function() {
+  const d = new Date();
+  document.getElementById('hdr-date').textContent =
+    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+})();
+
+async function api(path, opts = {}) {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(path + sep + 'token=' + TOKEN, {
+    headers: { 'Content-Type': 'application/json', 'X-Inspector-Token': TOKEN },
+    ...opts,
+  });
+  return res.json();
+}
+
+async function loadProperties() {
+  try {
+    const data = await api('/api/inspect/properties');
+    allProperties = data.properties || [];
+    const sel = document.getElementById('prop-select');
+    if (!allProperties.length) {
+      sel.innerHTML = '<option value="">No active projects with scope loaded</option>';
+      document.getElementById('main-content').innerHTML =
+        '<div class="empty-state"><p>No active projects found.</p><small>Ask Barry to load the WCP budget for each project.</small></div>';
+      return;
+    }
+    sel.innerHTML = allProperties.map(p =>
+      `<option value="${p.id}">${p.address}</option>`
+    ).join('');
+    selectProperty(allProperties[0].id);
+  } catch(e) {
+    document.getElementById('main-content').innerHTML =
+      '<div class="empty-state"><p>Connection error.</p><small>Check your internet connection and try again.</small></div>';
+  }
+}
+
+function selectProperty(propId) {
+  currentPropId = propId;
+  changes = {};
+  const prop = allProperties.find(p => p.id === propId);
+  if (!prop) return;
+  renderProp(prop);
+}
+
+function renderProp(prop) {
+  const metrics = prop.metrics || {};
+  const scope = prop.scope_items || [];
+
+  // Group by phase
+  const phases = {};
+  const phaseOrder = [];
+  for (const item of scope) {
+    if (!phases[item.phase]) {
+      phases[item.phase] = { order: item.phase_order, items: [] };
+      phaseOrder.push(item.phase);
+    }
+    phases[item.phase].items.push(item);
+  }
+  phaseOrder.sort((a, b) => phases[a].order - phases[b].order);
+
+  let html = '';
+
+  // Progress banner
+  if (metrics.has_project) {
+    const pct = metrics.overall_pct || 0;
+    const dayEl = metrics.projected_days ? `${metrics.days_elapsed}/${metrics.projected_days} days` : `${metrics.days_elapsed} days elapsed`;
+    let paceLabel = '', paceClass = 'pace-ok';
+    if (metrics.pace_delta > 5) { paceLabel = `+${metrics.pace_delta}% ahead`; paceClass = 'pace-ahead'; }
+    else if (metrics.pace_delta < -5) { paceLabel = `${metrics.pace_delta}% behind pace`; paceClass = 'pace-behind'; }
+    else { paceLabel = 'On track'; paceClass = 'pace-ok'; }
+
+    html += `<div class="progress-banner">
+      <div class="row">
+        <div><div class="label">Overall Complete</div><div class="val">${pct}%</div></div>
+        <div style="text-align:right">
+          <div class="label">Timeline</div>
+          <div style="font-size:14px;font-weight:700;color:#374151">${dayEl}</div>
+        </div>
+      </div>
+      <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:${pct}%"></div></div>
+      ${paceLabel ? `<div style="margin-top:8px"><span class="pace-chip ${paceClass}">${paceLabel}</span></div>` : ''}
+    </div>`;
+  }
+
+  // Phase sections
+  for (const phase of phaseOrder) {
+    const { items } = phases[phase];
+    const phaseDone = items.filter(i => i.completion_pct === 100).length;
+    const phaseTotal = items.length;
+    const phaseBudget = items.reduce((s, i) => s + i.budget, 0);
+    const phasePct = phaseBudget > 0
+      ? Math.round(items.reduce((s, i) => s + i.budget * i.completion_pct / 100, 0) / phaseBudget * 100)
+      : 0;
+
+    const phaseId = phase.replace(/[^a-z0-9]/gi, '_');
+
+    html += `<div class="phase-section">
+      <div class="phase-header" onclick="togglePhase('${phaseId}')">
+        <h2>${phase}</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;color:#9ca3af">${phaseDone}/${phaseTotal}</span>
+          <span class="phase-pct">${phasePct}%</span>
+          <span id="arrow-${phaseId}" style="font-size:12px;color:#9ca3af">▾</span>
+        </div>
+      </div>
+      <div class="phase-items" id="items-${phaseId}">`;
+
+    for (const item of items) {
+      const cur = changes[item.id] !== undefined ? changes[item.id] : item;
+      const curPct = cur.completion_pct !== undefined ? cur.completion_pct : item.completion_pct;
+      const curNotes = cur.notes !== undefined ? cur.notes : (item.notes || '');
+      const photoCount = (item.photos || []).length;
+
+      html += `<div class="scope-item" id="item-${item.id}">
+        <div class="item-top">
+          <div class="item-name">${item.name}</div>
+          <div class="item-budget">$${item.budget.toLocaleString()}</div>
+        </div>
+        <div class="pct-btns">
+          ${[0,25,50,75,100].map(p =>
+            `<button class="pct-btn ${curPct === p ? 'active' : ''}" onclick="setPct('${item.id}', ${p}, this)">${p}%</button>`
+          ).join('')}
+        </div>
+        <textarea class="notes-input" id="notes-${item.id}" placeholder="Notes for this item..." onchange="setNotes('${item.id}', this.value)">${curNotes}</textarea>
+        <div class="photo-row">
+          <button class="photo-btn" onclick="triggerPhoto('${item.id}')">📷 Add Photo</button>
+          <span class="photo-count" id="photo-count-${item.id}">${photoCount > 0 ? photoCount + ' photo' + (photoCount > 1 ? 's' : '') : ''}</span>
+        </div>
+        <div class="photo-thumbs" id="thumbs-${item.id}">
+          ${(item.photos || []).map(ph => `<img class="photo-thumb" src="${ph.url}" alt="photo">`).join('')}
+        </div>
+      </div>`;
+    }
+
+    html += `</div></div>`;
+  }
+
+  document.getElementById('main-content').innerHTML = html || '<div class="empty-state"><p>No scope items loaded for this property.</p></div>';
+  document.getElementById('submit-area').style.display = scope.length ? 'block' : 'none';
+  document.getElementById('submit-status').textContent = '';
+}
+
+function togglePhase(phaseId) {
+  const el = document.getElementById('items-' + phaseId);
+  const arrow = document.getElementById('arrow-' + phaseId);
+  const hidden = el.classList.toggle('hidden');
+  arrow.textContent = hidden ? '▸' : '▾';
+}
+
+function setPct(itemId, pct, btn) {
+  changes[itemId] = changes[itemId] || {};
+  changes[itemId].completion_pct = pct;
+  // Update button states
+  const row = btn.closest('.pct-btns');
+  row.querySelectorAll('.pct-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function setNotes(itemId, val) {
+  changes[itemId] = changes[itemId] || {};
+  changes[itemId].notes = val;
+}
+
+function triggerPhoto(itemId) {
+  pendingPhotoItemId = itemId;
+  document.getElementById('photo-file-input').value = '';
+  document.getElementById('photo-file-input').click();
+}
+
+async function handlePhotoFile(input) {
+  if (!input.files.length || !pendingPhotoItemId) return;
+  const itemId = pendingPhotoItemId;
+  const file = input.files[0];
+  const btn = document.querySelector(`#item-${itemId} .photo-btn`);
+  if (btn) { btn.textContent = '⏳ Uploading...'; btn.disabled = true; }
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`/api/inspect/photo/${currentPropId}/${itemId}?token=${TOKEN}`, {
+      method: 'POST',
+      body: fd,
+    });
+    const json = await res.json();
+    if (json.ok) {
+      const thumbs = document.getElementById('thumbs-' + itemId);
+      thumbs.innerHTML += `<img class="photo-thumb" src="${json.url}" alt="photo">`;
+      const countEl = document.getElementById('photo-count-' + itemId);
+      const cur = parseInt(countEl.textContent) || 0;
+      const newCount = cur + 1;
+      countEl.textContent = newCount + ' photo' + (newCount > 1 ? 's' : '');
+    }
+  } catch(e) {
+    alert('Photo upload failed. Try again.');
+  }
+
+  if (btn) { btn.textContent = '📷 Add Photo'; btn.disabled = false; }
+  pendingPhotoItemId = null;
+}
+
+async function submitInspection() {
+  const prop = allProperties.find(p => p.id === currentPropId);
+  if (!prop || !Object.keys(changes).length) {
+    document.getElementById('submit-status').textContent = 'No changes to submit.';
+    return;
+  }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  const updates = Object.entries(changes).map(([item_id, vals]) => ({
+    item_id,
+    completion_pct: vals.completion_pct,
+    notes: vals.notes,
+  }));
+
+  try {
+    const res = await api('/api/inspect/report', {
+      method: 'POST',
+      body: JSON.stringify({ prop_id: currentPropId, updates }),
+    });
+    if (res.ok) {
+      document.getElementById('submit-status').textContent = `Inspection saved. ${res.updated} item${res.updated !== 1 ? 's' : ''} updated.`;
+      // Refresh property data
+      const data = await api('/api/inspect/properties');
+      allProperties = data.properties || [];
+      const updated = allProperties.find(p => p.id === currentPropId);
+      if (updated) {
+        changes = {};
+        renderProp(updated);
+      }
+    } else {
+      document.getElementById('submit-status').textContent = 'Error: ' + (res.error || 'Unknown error');
+    }
+  } catch(e) {
+    document.getElementById('submit-status').textContent = 'Connection error. Try again.';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Submit Inspection';
+}
+
+loadProperties();
+</script>
+</body>
+</html>

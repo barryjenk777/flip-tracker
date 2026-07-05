@@ -7,6 +7,7 @@ Standalone Flask application for tracking renovation flip investments.
 from flask import Flask, render_template, request, jsonify, Response, send_file, session
 import json
 import os
+import uuid
 import base64
 import io
 import re
@@ -16,7 +17,8 @@ import shutil
 import signal
 import atexit
 import threading
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timedelta
 from functools import wraps
 
 app = Flask(__name__)
@@ -116,6 +118,7 @@ CD_TAX_KEYWORDS = {
 # Data persistence (JSON file, with in-memory fallback for Railway)
 # ---------------------------------------------------------------------------
 DATA_FILE = os.environ.get('DATA_FILE', '/data/flip_data.json')
+PHOTOS_DIR = os.path.join(os.path.dirname(os.path.abspath(DATA_FILE)), 'photos')
 _memory_store = None
 _data_lock = threading.Lock()  # Serializes all load/save operations
 
@@ -3211,6 +3214,516 @@ def _start_sheets_scheduler():
 # Only start if Google credentials are configured
 if os.environ.get('GOOGLE_SHEET_ID') and os.environ.get('GOOGLE_CREDENTIALS_JSON'):
     _start_sheets_scheduler()
+
+
+# ---------------------------------------------------------------------------
+# Construction Project Management
+# ---------------------------------------------------------------------------
+
+WCP_SCHEMA = [
+    ("PRE-CONSTRUCTION & DESIGN", 1, [
+        "Permits", "Plans (Architectural, Engineering, Design)",
+    ]),
+    ("SITE PREPARATION", 2, [
+        "Clearing & Grading", "Silt Fence & Erosion Control",
+        "Interior Demolition", "Exterior Demolition", "Dumpsters & Trash Removal",
+    ]),
+    ("FOUNDATION WORK", 3, [
+        "Excavation", "Underpinning & Footings", "Foundation & Concrete", "Waterproofing",
+    ]),
+    ("FRAMING", 4, [
+        "Wood Framing", "Steel Framing", "Insulation", "Roofing & Flashing",
+    ]),
+    ("UTILITY ROUGH-INS", 5, [
+        "Electrical Rough-In", "Plumbing Rough-in", "Mechanical Rough-in",
+    ]),
+    ("EXTERIOR FINISHES", 6, [
+        "Siding & Trim", "Masonry & Stonework", "Windows", "Exterior Doors & Frames",
+        "Gutters & Downspouts", "Porch, Patio, & Deck", "Exterior Painting",
+    ]),
+    ("INTERIOR WORK", 7, [
+        "Drywall", "Interior Doors & Frames", "Interior Trim & Millwork",
+        "Flooring", "Staircase", "Interior Painting",
+    ]),
+    ("UTILITY FINISHES", 8, [
+        "Electrical Fixtures", "Plumbing Fixtures", "Mechanical Finishes",
+    ]),
+    ("INTERIOR FINISHES", 9, [
+        "Tile & Backsplash", "Bathtubs & Showers", "Toilets", "Vanities",
+        "Kitchen Cabinets", "Appliances", "Countertops", "Washer/Dryer",
+    ]),
+    ("EXTERIOR MISCELLANEOUS", 10, [
+        "Landscaping", "Tree Removal", "Garage & Door", "Driveway",
+        "Sidewalk", "Fence", "Powerwash", "Septic", "Water Well",
+    ]),
+    ("INTERIOR MISCELLANEOUS", 11, [
+        "Fire Alarms", "Fire-Rated Doors", "Sprinklers", "Fireplace",
+        "Chimney", "Final Cleaning", "Staging",
+    ]),
+    ("OTHER", 12, [
+        "House numbers & Mailbox",
+        "interior & exterior Railings, metal work and balconies",
+        "Reglazing of tubs and showers",
+    ]),
+    ("CONTINGENCY", 13, ["Contingency"]),
+]
+
+_WCP_PHASE_LOOKUP = {ph.upper(): (ph, o) for ph, o, _ in WCP_SCHEMA}
+_WCP_EXPENSE_LOOKUP = {}
+for _wcp_ph, _wcp_ord, _wcp_exps in WCP_SCHEMA:
+    for _wcp_exp in _wcp_exps:
+        _WCP_EXPENSE_LOOKUP[_wcp_exp.lower().strip()] = (_wcp_ph, _wcp_ord, _wcp_exp)
+
+
+def _parse_dollar_v(s):
+    if not s:
+        return 0.0
+    try:
+        return max(float(str(s).replace('$', '').replace(',', '').strip()), 0.0)
+    except (ValueError, AttributeError):
+        return 0.0
+
+
+def _match_wcp_expense(text):
+    if not text:
+        return None
+    # Some lender PDFs render the "ti" ligature as a stray capital E mid-word
+    # (e.g. "Vanities" -> "VaniEes", "Demolition" -> "DemoliEon"). Restore it.
+    # Only fires on a capital E flanked by lowercase letters, which normal
+    # title-case text never produces, so legitimate names are untouched.
+    text = re.sub(r'([a-z])E([a-z])', r'\1ti\2', text)
+    t = text.strip().lower()
+    if t in _WCP_EXPENSE_LOOKUP:
+        return _WCP_EXPENSE_LOOKUP[t]
+    for key, val in _WCP_EXPENSE_LOOKUP.items():
+        if t.startswith(key) or key.startswith(t[:max(len(t)-3, 5)]):
+            return val
+    return None
+
+
+def _make_scope_item(phase, phase_order, name, budget):
+    return {
+        'id': str(uuid.uuid4()),
+        'phase': phase,
+        'phase_order': phase_order,
+        'name': name,
+        'budget': round(float(budget), 2),
+        'completion_pct': 0,
+        'notes': '',
+        'photos': [],
+        'last_updated': None,
+        'updated_by': None,
+    }
+
+
+def parse_wcp_pdf(file_bytes):
+    """Parse WCP Construction Budget PDF using pdfplumber table extraction."""
+    import pdfplumber
+    items = []
+    seen = set()
+
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                for row in table:
+                    if not row:
+                        continue
+                    cells = [str(c or '').strip() for c in row]
+
+                    for i, cell in enumerate(cells):
+                        m = _match_wcp_expense(cell)
+                        if m and m[2] not in seen:
+                            ph, o, canonical = m
+                            for j in range(i + 1, min(i + 6, len(cells))):
+                                amt = _parse_dollar_v(cells[j])
+                                if amt > 0:
+                                    seen.add(canonical)
+                                    items.append(_make_scope_item(ph, o, canonical, amt))
+                                    break
+                            break
+
+    return sorted(items, key=lambda x: x['phase_order'])
+
+
+def parse_wcp_xlsx(file_bytes):
+    """Parse WCP Construction Budget XLSX."""
+    import openpyxl
+    items = []
+    seen = set()
+
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    ws = wb.active
+
+    for row in ws.iter_rows(values_only=True):
+        cells = [str(c or '').strip() for c in row]
+        for i, cell in enumerate(cells):
+            m = _match_wcp_expense(cell)
+            if m and m[2] not in seen:
+                ph, o, canonical = m
+                for j in range(i + 1, min(i + 6, len(cells))):
+                    amt = _parse_dollar_v(cells[j])
+                    if amt > 0:
+                        seen.add(canonical)
+                        items.append(_make_scope_item(ph, o, canonical, amt))
+                        break
+                break
+
+    return sorted(items, key=lambda x: x['phase_order'])
+
+
+def calc_project_metrics(prop):
+    scope = prop.get('scope_items', [])
+    plan = prop.get('project_plan', {}) or {}
+    if not scope:
+        return {'has_project': False}
+
+    total_budget = sum(i['budget'] for i in scope)
+    weighted_done = sum(i['budget'] * i['completion_pct'] / 100.0 for i in scope)
+    overall_pct = round(weighted_done / total_budget * 100, 1) if total_budget else 0
+
+    start_str = plan.get('start_date')
+    proj_days = int(plan.get('projected_days') or 0)
+    daily_interest = float(plan.get('daily_interest') or 0)
+    days_elapsed = days_over = 0
+    expected_pct = 0.0
+    proj_end = None
+
+    if start_str:
+        try:
+            start_dt = datetime.strptime(start_str, '%Y-%m-%d')
+            days_elapsed = (datetime.now() - start_dt).days
+            if proj_days:
+                proj_end = (start_dt + timedelta(days=proj_days)).strftime('%Y-%m-%d')
+                days_over = max(days_elapsed - proj_days, 0)
+                expected_pct = min(round(days_elapsed / proj_days * 100, 1), 100)
+        except ValueError:
+            pass
+
+    pace_delta = round(overall_pct - expected_pct, 1)
+    interest_overrun = round(days_over * daily_interest, 2)
+
+    phase_map = defaultdict(lambda: {'budget': 0.0, 'done_budget': 0.0, 'items': 0, 'complete': 0})
+    for item in scope:
+        ph = item['phase']
+        phase_map[ph]['budget'] += item['budget']
+        phase_map[ph]['done_budget'] += item['budget'] * item['completion_pct'] / 100.0
+        phase_map[ph]['items'] += 1
+        if item['completion_pct'] == 100:
+            phase_map[ph]['complete'] += 1
+
+    phases = []
+    for ph, o, _ in WCP_SCHEMA:
+        if ph in phase_map:
+            d = phase_map[ph]
+            pct = round(d['done_budget'] / d['budget'] * 100, 1) if d['budget'] else 0
+            phases.append({'phase': ph, 'phase_order': o, 'budget': round(d['budget'], 2),
+                           'done_budget': round(d['done_budget'], 2), 'pct': pct,
+                           'items': d['items'], 'complete': d['complete']})
+
+    draws = plan.get('draws', [])
+    total_drawn = sum(float(d.get('amount_received') or d.get('total_requested', 0))
+                      for d in draws if d.get('status') == 'received')
+
+    last_inspection = max((i['last_updated'] for i in scope if i.get('last_updated')), default=None)
+
+    return {
+        'has_project': True,
+        'total_budget': round(total_budget, 2),
+        'overall_pct': overall_pct,
+        'drawable_now': round(weighted_done, 2),
+        'days_elapsed': days_elapsed,
+        'projected_days': proj_days,
+        'proj_end': proj_end,
+        'days_over': days_over,
+        'interest_overrun': interest_overrun,
+        'daily_interest': daily_interest,
+        'expected_pct': expected_pct,
+        'pace_delta': pace_delta,
+        'phases': sorted(phases, key=lambda x: x['phase_order']),
+        'draws': draws,
+        'total_drawn': round(total_drawn, 2),
+        'last_inspection': last_inspection,
+        'scope_count': len(scope),
+    }
+
+
+def _ensure_photos_dir(prop_id, item_id):
+    path = os.path.join(PHOTOS_DIR, prop_id, item_id)
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        path = os.path.join(tempfile.gettempdir(), 'flip_photos', prop_id, item_id)
+        os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _get_inspector_token(data):
+    import secrets
+    token = (data.get('settings') or {}).get('inspector_token')
+    if not token:
+        token = secrets.token_urlsafe(16)
+        data.setdefault('settings', {})['inspector_token'] = token
+        save_data(data)
+    return token
+
+
+def _check_inspector_token():
+    token = request.args.get('token') or request.headers.get('X-Inspector-Token')
+    if not token:
+        return False
+    data = load_data()
+    return token == (data.get('settings') or {}).get('inspector_token')
+
+
+@app.route('/inspect')
+def inspector_app():
+    if not _check_inspector_token():
+        return '<h2 style="font-family:sans-serif;padding:40px;color:#c00">Invalid or missing access token.</h2>', 403
+    return render_template('inspector.html')
+
+
+@app.route('/photos/<prop_id>/<item_id>/<filename>')
+def serve_photo(prop_id, item_id, filename):
+    if not (check_auth() or _check_inspector_token()):
+        return '', 403
+    path = os.path.join(PHOTOS_DIR, prop_id, item_id, filename)
+    if not os.path.exists(path):
+        return '', 404
+    return send_file(path)
+
+
+@app.route('/api/settings/inspector-token', methods=['GET'])
+@login_required
+def get_inspector_token_route():
+    data = load_data()
+    token = _get_inspector_token(data)
+    base = request.host_url.rstrip('/')
+    return jsonify({'token': token, 'url': f'{base}/inspect?token={token}'})
+
+
+@app.route('/api/flips/<prop_id>/scope/import', methods=['POST'])
+@login_required
+def import_scope(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    f = request.files['file']
+    fname = (f.filename or '').lower()
+    file_bytes = f.read()
+
+    try:
+        if fname.endswith('.pdf'):
+            new_items = parse_wcp_pdf(file_bytes)
+        elif fname.endswith(('.xlsx', '.xls')):
+            new_items = parse_wcp_xlsx(file_bytes)
+        else:
+            return jsonify({'error': 'Upload a PDF or XLSX file'}), 400
+    except Exception as e:
+        return jsonify({'error': f'Parse error: {e}'}), 400
+
+    if not new_items:
+        return jsonify({'error': 'No line items found. Make sure this is a WCP Construction Budget document.'}), 400
+
+    existing = {item['name']: item for item in prop.get('scope_items', [])}
+    merged = []
+    for item in new_items:
+        if item['name'] in existing:
+            existing[item['name']]['budget'] = item['budget']
+            merged.append(existing[item['name']])
+        else:
+            merged.append(item)
+
+    prop['scope_items'] = merged
+    save_data(data)
+    return jsonify({'ok': True, 'count': len(merged), 'scope_items': merged,
+                    'metrics': calc_project_metrics(prop)})
+
+
+@app.route('/api/flips/<prop_id>/scope', methods=['GET'])
+@login_required
+def get_scope(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    return jsonify({'scope_items': prop.get('scope_items', []),
+                    'project_plan': prop.get('project_plan', {}),
+                    'metrics': calc_project_metrics(prop)})
+
+
+@app.route('/api/flips/<prop_id>/scope/<item_id>', methods=['PUT'])
+@login_required
+def update_scope_item(prop_id, item_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    item = next((i for i in prop.get('scope_items', []) if i['id'] == item_id), None)
+    if not item:
+        return jsonify({'error': 'Item not found'}), 404
+    body = request.get_json(silent=True) or {}
+    if 'completion_pct' in body:
+        item['completion_pct'] = int(body['completion_pct'])
+    if 'notes' in body:
+        item['notes'] = body['notes']
+    item['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+    item['updated_by'] = 'admin'
+    save_data(data)
+    return jsonify({'ok': True, 'metrics': calc_project_metrics(prop)})
+
+
+@app.route('/api/flips/<prop_id>/project', methods=['POST'])
+@login_required
+def set_project_plan(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    body = request.get_json(silent=True) or {}
+    plan = prop.get('project_plan', {}) or {}
+    for field in ('start_date', 'contractor', 'notes'):
+        if field in body:
+            plan[field] = body[field]
+    if 'projected_days' in body:
+        plan['projected_days'] = int(body.get('projected_days') or 0)
+    if 'daily_interest' in body:
+        plan['daily_interest'] = float(body.get('daily_interest') or 0)
+    prop['project_plan'] = plan
+    save_data(data)
+    return jsonify({'ok': True, 'metrics': calc_project_metrics(prop)})
+
+
+@app.route('/api/flips/<prop_id>/draws', methods=['POST'])
+@login_required
+def add_draw_request(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    body = request.get_json(silent=True) or {}
+    plan = prop.get('project_plan', {}) or {}
+    draws = plan.get('draws', [])
+    draw = {
+        'id': str(uuid.uuid4()),
+        'draw_number': len(draws) + 1,
+        'requested_date': body.get('requested_date', datetime.now().strftime('%Y-%m-%d')),
+        'total_requested': float(body.get('total_requested') or 0),
+        'status': 'pending',
+        'amount_received': 0.0,
+        'received_date': None,
+        'notes': body.get('notes', ''),
+    }
+    draws.append(draw)
+    plan['draws'] = draws
+    prop['project_plan'] = plan
+    save_data(data)
+    return jsonify({'ok': True, 'draw': draw, 'metrics': calc_project_metrics(prop)})
+
+
+@app.route('/api/flips/<prop_id>/draws/<draw_id>', methods=['PUT'])
+@login_required
+def update_draw(prop_id, draw_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    plan = prop.get('project_plan', {}) or {}
+    draw = next((d for d in plan.get('draws', []) if d['id'] == draw_id), None)
+    if not draw:
+        return jsonify({'error': 'Draw not found'}), 404
+    body = request.get_json(silent=True) or {}
+    for f in ('status', 'received_date', 'notes'):
+        if f in body:
+            draw[f] = body[f]
+    if 'amount_received' in body:
+        draw['amount_received'] = float(body['amount_received'] or 0)
+    prop['project_plan'] = plan
+    save_data(data)
+    return jsonify({'ok': True, 'metrics': calc_project_metrics(prop)})
+
+
+@app.route('/api/inspect/properties', methods=['GET'])
+def inspect_properties():
+    if not _check_inspector_token():
+        return jsonify({'error': 'Unauthorized'}), 403
+    data = load_data()
+    result = []
+    for prop in data.get('properties', []):
+        if prop.get('status') == 'closed' or not prop.get('scope_items'):
+            continue
+        result.append({
+            'id': prop['id'],
+            'address': prop.get('address', 'Unknown'),
+            'scope_items': prop.get('scope_items', []),
+            'project_plan': prop.get('project_plan', {}),
+            'metrics': calc_project_metrics(prop),
+        })
+    return jsonify({'properties': result})
+
+
+@app.route('/api/inspect/report', methods=['POST'])
+def submit_inspection():
+    if not _check_inspector_token():
+        return jsonify({'error': 'Unauthorized'}), 403
+    body = request.get_json(silent=True) or {}
+    prop_id = body.get('prop_id')
+    updates = body.get('updates', [])
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    today = datetime.now().strftime('%Y-%m-%d')
+    updated_count = 0
+    for upd in updates:
+        item = next((i for i in prop.get('scope_items', []) if i['id'] == upd.get('item_id')), None)
+        if item:
+            if 'completion_pct' in upd:
+                item['completion_pct'] = int(upd['completion_pct'])
+            if 'notes' in upd and upd['notes']:
+                item['notes'] = upd['notes']
+            item['last_updated'] = today
+            item['updated_by'] = 'inspector'
+            updated_count += 1
+    plan = prop.get('project_plan', {}) or {}
+    plan.setdefault('inspections', []).append({'date': today, 'items_updated': updated_count})
+    prop['project_plan'] = plan
+    save_data(data)
+    return jsonify({'ok': True, 'updated': updated_count})
+
+
+@app.route('/api/inspect/photo/<prop_id>/<item_id>', methods=['POST'])
+def upload_inspect_photo(prop_id, item_id):
+    if not _check_inspector_token():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file'}), 400
+    f = request.files['file']
+    ext = os.path.splitext(f.filename or 'photo.jpg')[1].lower() or '.jpg'
+    if ext not in ('.jpg', '.jpeg', '.png', '.heic', '.webp'):
+        return jsonify({'error': 'Unsupported image type'}), 400
+    photo_dir = _ensure_photos_dir(prop_id, item_id)
+    filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}{ext}'
+    filepath = os.path.join(photo_dir, filename)
+    f.save(filepath)
+    token = request.args.get('token') or request.headers.get('X-Inspector-Token', '')
+    photo_url = f'/photos/{prop_id}/{item_id}/{filename}?token={token}'
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if prop:
+        item = next((i for i in prop.get('scope_items', []) if i['id'] == item_id), None)
+        if item:
+            item.setdefault('photos', []).append({
+                'url': photo_url,
+                'filename': filename,
+                'uploaded': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            })
+            save_data(data)
+    return jsonify({'ok': True, 'url': photo_url})
 
 
 if __name__ == '__main__':

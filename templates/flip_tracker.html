@@ -945,6 +945,7 @@
             <button class="tab-btn" onclick="switchTab('analysis')">Deal Analysis</button>
             <button class="tab-btn" onclick="switchTab('tax')">Tax & P&L</button>
             <button class="tab-btn" onclick="switchTab('prospects')">Deal Analyzer</button>
+            <button class="tab-btn" onclick="switchTab('projects')">Projects</button>
             <button class="tab-btn" onclick="switchTab('command')">Command Center</button>
         </div>
 
@@ -1495,6 +1496,32 @@
         </div>
     </div>
 
+    <!-- ===== PROJECTS TAB ===== -->
+    <div class="tab-content" id="tab-projects">
+        <!-- Inspector Access Card -->
+        <div class="card" style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                <div>
+                    <div class="card-title" style="margin-bottom:4px;">Inspector Access Link</div>
+                    <div style="font-size:13px;color:var(--text-secondary);">Share this URL with your assistant project manager. It opens a mobile app with no access to the rest of the tracker.</div>
+                </div>
+                <button class="btn btn-secondary" style="font-size:12px;white-space:nowrap;" onclick="loadInspectorLink()">Get Link</button>
+            </div>
+            <div id="inspector-link-box" style="margin-top:12px;display:none;">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <code id="inspector-link-text" style="font-size:12px;color:var(--accent);flex:1;word-break:break-all;"></code>
+                    <button class="btn btn-sm" onclick="copyInspectorLink()" style="font-size:12px;padding:5px 12px;white-space:nowrap;">Copy</button>
+                </div>
+                <div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Anyone with this link can submit inspections. Keep it private. To reset it, contact support.</div>
+            </div>
+        </div>
+
+        <!-- Project Cards -->
+        <div id="projects-list">
+            <div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px;">Loading projects...</div>
+        </div>
+    </div>
+
     <!-- ===== COMMAND CENTER TAB ===== -->
     <div class="tab-content" id="tab-command">
         <!-- Goal Hero -->
@@ -1890,7 +1917,7 @@ async function apiPost(url, body) {
 
 // ---- Tab switching ----
 function switchTab(name) {
-    const tabMap = { portfolio: 'Portfolio Overview', completed: 'Completed Deals', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', tax: 'Tax & P&L', prospects: 'Deal Analyzer', command: 'Command Center' };
+    const tabMap = { portfolio: 'Portfolio Overview', completed: 'Completed Deals', summary: '2026 Summary', property: 'Property Detail', expenses: 'Expenses & Draws', analysis: 'Deal Analysis', tax: 'Tax & P&L', prospects: 'Deal Analyzer', projects: 'Projects', command: 'Command Center' };
     const target = tabMap[name] || '';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent === target));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === 'tab-'+name));
@@ -1900,6 +1927,10 @@ function switchTab(name) {
         btn.textContent = '+ Analyze Deal';
         btn.onclick = () => { switchDealMode('prospect'); $('qa-address') && $('qa-address').focus(); };
         populateOcPropertyPicker();
+    } else if (name === 'projects') {
+        btn.textContent = 'Refresh';
+        btn.onclick = () => loadProjects();
+        loadProjects();
     } else if (name === 'command') {
         btn.textContent = 'Refresh';
         btn.onclick = () => loadCommandCenter();
@@ -6100,6 +6131,247 @@ function updateCloseoutDistribution() {
                 </div>
             </div>
         </div>`;
+}
+
+// ---- Projects Tab ----
+
+let _projectData = {};  // propId → { scope_items, project_plan, metrics }
+
+async function loadProjects() {
+    const properties = (flipData || {}).properties || [];
+    const active = properties.filter(f => f.status !== 'closed');
+    if (!active.length) {
+        document.getElementById('projects-list').innerHTML =
+            '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px;">No active properties. Add a property to get started.</div>';
+        return;
+    }
+    const results = await Promise.all(active.map(f =>
+        apiFetch(`/api/flips/${f.id}/scope`).then(r => r.json()).then(d => ({ ...d, id: f.id, address: f.address }))
+    ));
+    _projectData = {};
+    for (const r of results) _projectData[r.id] = r;
+    renderProjectsList(active, results);
+}
+
+function renderProjectsList(flips, scopeData) {
+    const list = document.getElementById('projects-list');
+    if (!flips.length) {
+        list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">No active properties.</div>';
+        return;
+    }
+    list.innerHTML = flips.map(f => {
+        const d = scopeData.find(s => s.id === f.id) || {};
+        return renderProjectCard(f, d);
+    }).join('');
+}
+
+function renderProjectCard(flip, data) {
+    const m = data.metrics || {};
+    const plan = data.project_plan || {};
+    const scope = data.scope_items || [];
+    const hasScope = scope.length > 0;
+    const fmtD = v => '$' + (v || 0).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+
+    let timelineHtml = '';
+    if (m.has_project && m.projected_days) {
+        const pct = Math.min(m.days_elapsed / m.projected_days * 100, 100);
+        const daysOver = m.days_over || 0;
+        const color = daysOver > 0 ? 'var(--red)' : (m.pace_delta < -5 ? 'var(--yellow)' : 'var(--green)');
+        timelineHtml = `
+        <div style="margin:12px 0;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">
+                <span>Timeline: Day ${m.days_elapsed} of ${m.projected_days}</span>
+                <span style="color:${color};font-weight:700;">${daysOver > 0 ? `${daysOver} days over` : `${m.projected_days - m.days_elapsed} days left`}</span>
+            </div>
+            <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden;">
+                <div style="background:${color};width:${Math.round(pct)}%;height:100%;border-radius:4px;"></div>
+            </div>
+            ${daysOver > 0 && m.daily_interest > 0 ? `<div style="font-size:11px;color:var(--red);margin-top:4px;">Extra interest: ${fmtD(m.interest_overrun)}</div>` : ''}
+        </div>`;
+    }
+
+    let phaseHtml = '';
+    if (m.phases && m.phases.length) {
+        phaseHtml = `<div style="margin-top:12px;" id="phases-${flip.id}">` +
+        m.phases.map(ph => {
+            const barColor = ph.pct === 100 ? 'var(--green)' : ph.pct > 0 ? 'var(--accent)' : 'var(--border)';
+            return `<div style="margin-bottom:6px;">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+                    <span style="color:var(--text-secondary);">${ph.phase}</span>
+                    <span style="font-weight:700;color:${barColor};">${ph.pct}%</span>
+                </div>
+                <div style="background:var(--bg-secondary);border-radius:3px;height:6px;overflow:hidden;">
+                    <div style="background:${barColor};width:${ph.pct}%;height:100%;border-radius:3px;transition:width 0.3s;"></div>
+                </div>
+            </div>`;
+        }).join('') + `</div>`;
+    }
+
+    let drawHtml = '';
+    if (m.has_project) {
+        const draws = m.draws || [];
+        const pending = draws.filter(d => d.status === 'pending');
+        const drawEligible = fmtD(m.drawable_now);
+        const drawn = fmtD(m.total_drawn);
+        drawHtml = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;">
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">Budget</div>
+                <div style="font-size:15px;font-weight:800;color:var(--text-primary);">${fmtD(m.total_budget)}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">Drawable</div>
+                <div style="font-size:15px;font-weight:800;color:var(--accent);">${drawEligible}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;margin-bottom:2px;">Drawn</div>
+                <div style="font-size:15px;font-weight:800;color:var(--green);">${drawn}</div>
+            </div>
+        </div>
+        ${pending.length ? `<div style="margin-top:8px;font-size:12px;color:var(--yellow);">${pending.length} draw request${pending.length > 1 ? 's' : ''} pending</div>` : ''}`;
+    }
+
+    const lastInspection = m.last_inspection
+        ? `<span style="font-size:11px;color:var(--text-muted);">Last inspection: ${m.last_inspection}</span>`
+        : `<span style="font-size:11px;color:var(--text-muted);">No inspections yet</span>`;
+
+    return `<div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+            <div>
+                <div class="card-title" style="margin-bottom:2px;">${flip.address}</div>
+                ${lastInspection}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                ${hasScope ? `<span style="font-size:14px;font-weight:800;color:var(--accent);">${m.overall_pct || 0}%</span>` : ''}
+                <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="importScopeDoc('${flip.id}')">
+                    ${hasScope ? 'Re-import Scope' : 'Import WCP Budget'}
+                </button>
+            </div>
+        </div>
+
+        ${!hasScope ? `<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">Upload the WCP Construction Budget (PDF or XLSX) to load the scope of work.</div>` : ''}
+
+        ${hasScope ? `
+        <!-- Setup row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;" class="proj-setup-row">
+            <div>
+                <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:3px;">START DATE</div>
+                <input type="date" id="proj-start-${flip.id}" value="${plan.start_date || ''}"
+                    style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:5px 8px;border-radius:6px;font-size:12px;"
+                    onchange="saveProjectPlan('${flip.id}')">
+            </div>
+            <div>
+                <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:3px;">PROJECTED DAYS</div>
+                <input type="number" id="proj-days-${flip.id}" value="${plan.projected_days || ''}" placeholder="e.g. 60"
+                    style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:5px 8px;border-radius:6px;font-size:12px;"
+                    onchange="saveProjectPlan('${flip.id}')">
+            </div>
+            <div>
+                <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:3px;">INTEREST/DAY ($)</div>
+                <input type="number" id="proj-interest-${flip.id}" value="${plan.daily_interest || ''}" placeholder="e.g. 52"
+                    style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:5px 8px;border-radius:6px;font-size:12px;"
+                    onchange="saveProjectPlan('${flip.id}')">
+            </div>
+            <div>
+                <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:3px;">CONTRACTOR</div>
+                <input type="text" id="proj-contractor-${flip.id}" value="${plan.contractor || ''}" placeholder="GC name"
+                    style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:5px 8px;border-radius:6px;font-size:12px;"
+                    onchange="saveProjectPlan('${flip.id}')">
+            </div>
+        </div>
+        ${timelineHtml}
+        ${drawHtml}
+        <details style="margin-top:12px;">
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);padding:6px 0;">Phase Breakdown (${scope.length} items)</summary>
+            ${phaseHtml}
+        </details>
+        ` : ''}
+
+        <input type="file" id="scope-file-${flip.id}" accept=".pdf,.xlsx,.xls" style="display:none" onchange="handleScopeFile('${flip.id}', this)">
+    </div>`;
+}
+
+async function importScopeDoc(propId) {
+    document.getElementById('scope-file-' + propId).click();
+}
+
+async function handleScopeFile(propId, input) {
+    if (!input.files.length) return;
+    const file = input.files[0];
+    const statusEl = document.querySelector(`#proj-status-${propId}`);
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+        const res = await fetch(`/api/flips/${propId}/scope/import`, {
+            method: 'POST',
+            body: fd,
+        });
+        const json = await res.json();
+        if (json.ok) {
+            showToast(`Scope loaded: ${json.count} line items imported.`);
+            loadProjects();
+        } else {
+            showToast(json.error || 'Import failed.', true);
+        }
+    } catch(e) {
+        showToast('Upload error. Try again.', true);
+    }
+    input.value = '';
+}
+
+async function saveProjectPlan(propId) {
+    const start = (document.getElementById('proj-start-' + propId) || {}).value || '';
+    const days = (document.getElementById('proj-days-' + propId) || {}).value || 0;
+    const interest = (document.getElementById('proj-interest-' + propId) || {}).value || 0;
+    const contractor = (document.getElementById('proj-contractor-' + propId) || {}).value || '';
+
+    const res = await apiFetch(`/api/flips/${propId}/project`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_date: start, projected_days: parseInt(days) || 0, daily_interest: parseFloat(interest) || 0, contractor }),
+    });
+    const json = await res.json();
+    if (json.ok) {
+        // Silently refresh so the timeline updates
+        loadProjects();
+    }
+}
+
+function showToast(msg, isError = false) {
+    let el = document.getElementById('global-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'global-toast';
+        el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;transition:opacity 0.3s;';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.background = isError ? '#ef4444' : '#1a2740';
+    el.style.color = 'white';
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, 3000);
+}
+
+async function loadInspectorLink() {
+    const box = document.getElementById('inspector-link-box');
+    const text = document.getElementById('inspector-link-text');
+    try {
+        const res = await apiFetch('/api/settings/inspector-token');
+        const json = await res.json();
+        text.textContent = json.url;
+        box.style.display = 'block';
+    } catch(e) {
+        text.textContent = 'Error loading link.';
+        box.style.display = 'block';
+    }
+}
+
+function copyInspectorLink() {
+    const text = document.getElementById('inspector-link-text').textContent;
+    navigator.clipboard.writeText(text).then(() => showToast('Link copied to clipboard.'));
 }
 
 // ---- Init ----
