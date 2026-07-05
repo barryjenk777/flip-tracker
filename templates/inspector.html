@@ -130,9 +130,9 @@ async function loadProperties() {
     allProperties = data.properties || [];
     const sel = document.getElementById('prop-select');
     if (!allProperties.length) {
-      sel.innerHTML = '<option value="">No active projects with scope loaded</option>';
+      sel.innerHTML = '<option value="">No active projects found</option>';
       document.getElementById('main-content').innerHTML =
-        '<div class="empty-state"><p>No active projects found.</p><small>Ask Barry to load the WCP budget for each project.</small></div>';
+        '<div class="empty-state"><p>No active projects found.</p><small>Properties must be added to the tracker first.</small></div>';
       return;
     }
     sel.innerHTML = allProperties.map(p =>
@@ -252,7 +252,7 @@ function renderProp(prop) {
     html += `</div></div>`;
   }
 
-  document.getElementById('main-content').innerHTML = html || '<div class="empty-state"><p>No scope items loaded for this property.</p></div>';
+  document.getElementById('main-content').innerHTML = html || '<div class="empty-state"><p>No scope items loaded for this property.</p><small>Barry can upload the WCP budget or use "Seed from Expenses" in the Projects tab.</small></div>';
   document.getElementById('submit-area').style.display = scope.length ? 'block' : 'none';
   document.getElementById('submit-status').textContent = '';
 }

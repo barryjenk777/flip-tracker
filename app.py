@@ -3939,7 +3939,7 @@ def inspect_properties():
     data = load_data()
     result = []
     for prop in data.get('properties', []):
-        if prop.get('status') == 'closed' or not prop.get('scope_items'):
+        if prop.get('status') == 'closed':
             continue
         result.append({
             'id': prop['id'],
