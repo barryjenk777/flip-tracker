@@ -3338,7 +3338,6 @@ EXPENSE_TO_WCP_SCOPE = {
         ('EXTERIOR FINISHES', 6, 'Exterior Doors & Frames', 0.35),
     ],
     'Building Materials': [('INTERIOR WORK', 7, 'Drywall', 1.0)],
-    'General Contractor': [('INTERIOR WORK', 7, 'Drywall', 1.0)],
     'Paint':              [('INTERIOR WORK', 7, 'Interior Painting', 1.0)],
     'Flooring':           [('INTERIOR WORK', 7, 'Flooring', 1.0)],
     'Labor - Kitchen':    [('INTERIOR FINISHES', 9, 'Kitchen Cabinets', 1.0)],
@@ -3387,7 +3386,9 @@ def _compute_scope_blocking(prop):
             weighted = sum(i['budget'] * i['completion_pct'] / 100.0 for i in items_in_phase)
             phase_pct_map[ph_order] = round(weighted / total_budget * 100, 1)
         else:
-            phase_pct_map[ph_order] = 100.0
+            # No dollar data — use item count so $0 phases aren't auto-marked 100%
+            done = sum(1 for i in items_in_phase if i['completion_pct'] >= 100)
+            phase_pct_map[ph_order] = round(done / len(items_in_phase) * 100, 1)
 
     item_name_pct = {i['name']: i['completion_pct'] for i in scope}
 
@@ -3514,7 +3515,11 @@ def calc_project_metrics(prop):
 
     total_budget = sum(i['budget'] for i in scope)
     weighted_done = sum(i['budget'] * i['completion_pct'] / 100.0 for i in scope)
-    overall_pct = round(weighted_done / total_budget * 100, 1) if total_budget else 0
+    if total_budget:
+        overall_pct = round(weighted_done / total_budget * 100, 1)
+    else:
+        done_count = sum(1 for i in scope if i['completion_pct'] == 100)
+        overall_pct = round(done_count / len(scope) * 100, 1) if scope else 0
 
     start_str = plan.get('start_date')
     proj_days = int(plan.get('projected_days') or 0)
@@ -3550,7 +3555,7 @@ def calc_project_metrics(prop):
     for ph, o, _ in WCP_SCHEMA:
         if ph in phase_map:
             d = phase_map[ph]
-            pct = round(d['done_budget'] / d['budget'] * 100, 1) if d['budget'] else 0
+            pct = round(d['done_budget'] / d['budget'] * 100, 1) if d['budget'] else round(d['complete'] / d['items'] * 100, 1)
             phases.append({'phase': ph, 'phase_order': o, 'budget': round(d['budget'], 2),
                            'done_budget': round(d['done_budget'], 2), 'pct': pct,
                            'items': d['items'], 'complete': d['complete']})
@@ -3691,36 +3696,33 @@ def bootstrap_scope_from_expenses(prop_id):
     if not prop:
         return jsonify({'error': 'Property not found'}), 404
 
+    # Tally expense totals by category
     expense_totals = defaultdict(float)
     for exp in prop.get('expenses', []):
         cat = exp.get('category', '')
         amt = float(exp.get('amount', 0) or 0)
         expense_totals[cat] += amt
 
-    existing_names = {item['name'] for item in prop.get('scope_items', [])}
-
-    # Accumulate budget per WCP item name (multiple expense categories can map to the same item)
-    accumulated = {}
+    # Map expense totals to WCP item budgets
+    wcp_budgets = defaultdict(float)
     for cat, total in expense_totals.items():
-        mappings = EXPENSE_TO_WCP_SCOPE.get(cat)
-        if not mappings:
-            continue
-        for phase_name, phase_order, item_name, fraction in mappings:
-            allocated = round(total * fraction, 2)
-            if item_name in accumulated:
-                accumulated[item_name]['budget'] = round(accumulated[item_name]['budget'] + allocated, 2)
-            else:
-                accumulated[item_name] = {'phase': phase_name, 'phase_order': phase_order, 'budget': allocated}
+        for _, _, item_name, fraction in (EXPENSE_TO_WCP_SCOPE.get(cat) or []):
+            wcp_budgets[item_name] = round(wcp_budgets[item_name] + total * fraction, 2)
 
+    # Create ALL WCP items so the inspector has the full checklist.
+    # Budget comes from expense mapping where available; $0 otherwise.
+    existing_names = {item['name'] for item in prop.get('scope_items', [])}
     new_items = []
-    for item_name, info in accumulated.items():
-        if item_name in existing_names:
-            continue
-        si = _make_scope_item(info['phase'], info['phase_order'], item_name, info['budget'])
-        si['notes'] = 'Seeded from expense log. Confirm actual completion via inspector app.'
-        new_items.append(si)
+    for phase_name, phase_order, item_names in WCP_SCHEMA:
+        for item_name in item_names:
+            if item_name in existing_names:
+                continue
+            budget = round(wcp_budgets.get(item_name, 0.0), 2)
+            si = _make_scope_item(phase_name, phase_order, item_name, budget)
+            if budget > 0:
+                si['notes'] = 'Budget estimated from expense log. Confirm completion on site.'
+            new_items.append(si)
 
-    new_items.sort(key=lambda x: (x['phase_order'], x['name']))
     prop['scope_items'] = prop.get('scope_items', []) + new_items
     save_data(data)
     return jsonify({'ok': True, 'count': len(new_items),
