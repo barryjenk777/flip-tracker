@@ -17,6 +17,7 @@ import shutil
 import signal
 import atexit
 import threading
+import urllib.request as _urllib_req
 from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import wraps
@@ -27,6 +28,11 @@ app.secret_key = os.environ.get('SECRET_KEY', 'flip-tracker-secret-key-change-in
 
 # Simple password protection — set APP_PASSWORD env var in Railway
 APP_PASSWORD = os.environ.get('APP_PASSWORD', '')
+
+# Postmark — set these in Railway env vars
+POSTMARK_SERVER_TOKEN = os.environ.get('POSTMARK_SERVER_TOKEN', '')
+POSTMARK_FROM_EMAIL   = os.environ.get('POSTMARK_FROM_EMAIL', 'noreply@yourfriendlyagent.net')
+INSPECTION_NOTIFY_EMAIL = os.environ.get('INSPECTION_NOTIFY_EMAIL', 'barry@yourfriendlyagent.net')
 
 
 class DataSaveError(Exception):
@@ -3597,6 +3603,102 @@ def _ensure_photos_dir(prop_id, item_id):
     return path
 
 
+def _session_photos_dir(prop_id):
+    return _ensure_photos_dir(prop_id, 'session')
+
+
+def _send_inspection_email(prop, changes, photos):
+    """Send a Postmark inspection-report email with inline photos."""
+    if not POSTMARK_SERVER_TOKEN:
+        return
+    addr = f"{prop.get('address', '')} {prop.get('city', '')}".strip()
+    today = datetime.now().strftime('%B %d, %Y')
+    subject = f"Inspection: {addr} — {today}"
+
+    html = (
+        '<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;">'
+        f'<h2 style="color:#1a2740;border-bottom:2px solid #1a2740;padding-bottom:8px;">Weekly Inspection Report</h2>'
+        f'<p style="color:#6b7280;font-size:15px;margin-bottom:20px;">{addr}&nbsp;&nbsp;|&nbsp;&nbsp;{today}</p>'
+    )
+
+    if changes:
+        html += '<h3 style="color:#374151;margin-bottom:10px;">Progress Updates</h3>'
+        html += (
+            '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px;">'
+            '<tr style="background:#f3f4f6;">'
+            '<th style="padding:8px 12px;text-align:left;border:1px solid #e5e7eb;">Item</th>'
+            '<th style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;width:60px;">Before</th>'
+            '<th style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;width:60px;">After</th>'
+            '<th style="padding:8px 12px;text-align:left;border:1px solid #e5e7eb;">Notes</th>'
+            '</tr>'
+        )
+        for c in changes:
+            color = '#16a34a' if c['after'] > c['before'] else '#374151'
+            notes = c.get('notes') or ''
+            html += (
+                f'<tr>'
+                f'<td style="padding:8px 12px;border:1px solid #e5e7eb;">{c["name"]}</td>'
+                f'<td style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;">{c["before"]}%</td>'
+                f'<td style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;font-weight:bold;color:{color};">{c["after"]}%</td>'
+                f'<td style="padding:8px 12px;border:1px solid #e5e7eb;color:#6b7280;">{notes}</td>'
+                f'</tr>'
+            )
+        html += '</table>'
+    else:
+        html += '<p style="color:#6b7280;margin-bottom:20px;">No completion updates this visit.</p>'
+
+    attachments = []
+    if photos:
+        html += f'<h3 style="color:#374151;margin-bottom:10px;">Site Photos ({len(photos)})</h3>'
+        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">'
+        for i, ph in enumerate(photos[:12]):
+            try:
+                with open(ph['path'], 'rb') as fh:
+                    b64_data = base64.b64encode(fh.read()).decode()
+                ext = os.path.splitext(ph['filename'])[1].lower().lstrip('.')
+                ctype = 'image/jpeg' if ext in ('jpg', 'jpeg', 'heic') else f'image/{ext}'
+                cid = f'ph{i}'
+                attachments.append({
+                    'Name': ph['filename'],
+                    'Content': b64_data,
+                    'ContentType': ctype,
+                    'ContentID': f'cid:{cid}',
+                })
+                html += f'<img src="cid:{cid}" style="max-width:280px;max-height:240px;border-radius:6px;border:1px solid #e5e7eb;">'
+            except Exception as ex:
+                print(f'[postmark] photo read error: {ex}')
+        if len(photos) > 12:
+            html += f'<p style="color:#6b7280;font-size:13px;">...and {len(photos) - 12} more photos in the tracker.</p>'
+        html += '</div>'
+
+    html += '</div>'
+
+    payload = json.dumps({
+        'From': POSTMARK_FROM_EMAIL,
+        'To': INSPECTION_NOTIFY_EMAIL,
+        'Subject': subject,
+        'HtmlBody': html,
+        'Attachments': attachments,
+        'MessageStream': 'outbound',
+    }).encode()
+
+    req = _urllib_req.Request(
+        'https://api.postmarkapp.com/email',
+        data=payload,
+        headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Postmark-Server-Token': POSTMARK_SERVER_TOKEN,
+        },
+        method='POST',
+    )
+    try:
+        _urllib_req.urlopen(req, timeout=15)
+        print(f'[postmark] inspection email sent: {addr}')
+    except Exception as e:
+        print(f'[postmark] email failed: {e}')
+
+
 def _get_inspector_token(data):
     import secrets
     token = (data.get('settings') or {}).get('inspector_token')
@@ -3954,6 +4056,36 @@ def inspect_properties():
     return jsonify({'properties': result})
 
 
+@app.route('/api/inspect/session-photo/<prop_id>', methods=['POST'])
+def upload_session_photo(prop_id):
+    """Upload a general site photo not tied to a specific scope item."""
+    if not _check_inspector_token():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if 'photo' not in request.files:
+        return jsonify({'error': 'No photo'}), 400
+    f = request.files['photo']
+    ext = os.path.splitext(f.filename or 'photo.jpg')[1].lower() or '.jpg'
+    if ext not in ('.jpg', '.jpeg', '.png', '.heic', '.webp'):
+        return jsonify({'error': 'Unsupported image type'}), 400
+    photo_dir = _session_photos_dir(prop_id)
+    filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:6]}{ext}'
+    filepath = os.path.join(photo_dir, filename)
+    f.save(filepath)
+    token = request.args.get('token') or request.headers.get('X-Inspector-Token', '')
+    photo_url = f'/photos/{prop_id}/session/{filename}?token={token}'
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if prop is not None:
+        prop.setdefault('pending_photos', []).append({
+            'filename': filename,
+            'path': filepath,
+            'url': photo_url,
+            'uploaded': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        })
+        save_data(data)
+    return jsonify({'ok': True, 'url': photo_url})
+
+
 @app.route('/api/inspect/report', methods=['POST'])
 def submit_inspection():
     if not _check_inspector_token():
@@ -3965,11 +4097,17 @@ def submit_inspection():
     prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
     if not prop:
         return jsonify({'error': 'Property not found'}), 404
+
     today = datetime.now().strftime('%Y-%m-%d')
+    item_by_id = {i['id']: i for i in prop.get('scope_items', [])}
+
+    # Capture before state, apply updates, record changes for the email
+    email_changes = []
     updated_count = 0
     for upd in updates:
-        item = next((i for i in prop.get('scope_items', []) if i['id'] == upd.get('item_id')), None)
+        item = item_by_id.get(upd.get('item_id'))
         if item:
+            before_pct = item.get('completion_pct', 0)
             if 'completion_pct' in upd:
                 item['completion_pct'] = int(upd['completion_pct'])
             if 'notes' in upd and upd['notes']:
@@ -3977,11 +4115,44 @@ def submit_inspection():
             item['last_updated'] = today
             item['updated_by'] = 'inspector'
             updated_count += 1
+            if item['completion_pct'] != before_pct:
+                email_changes.append({
+                    'name': item['name'],
+                    'before': before_pct,
+                    'after': item['completion_pct'],
+                    'notes': upd.get('notes') or item.get('notes') or '',
+                })
+
+    # Pull pending photos and clear them
+    pending_photos = prop.pop('pending_photos', []) or []
+
     plan = prop.get('project_plan', {}) or {}
-    plan.setdefault('inspections', []).append({'date': today, 'items_updated': updated_count})
+    plan.setdefault('inspections', []).append({
+        'date': today,
+        'items_updated': updated_count,
+        'changes': email_changes,
+        'photos': [{'filename': p['filename'], 'url': p['url']} for p in pending_photos],
+    })
     prop['project_plan'] = plan
     save_data(data)
-    return jsonify({'ok': True, 'updated': updated_count})
+
+    # Fire email in background so the APM doesn't wait on it
+    if email_changes or pending_photos:
+        t = threading.Thread(target=_send_inspection_email, args=(prop, email_changes, pending_photos), daemon=True)
+        t.start()
+
+    return jsonify({'ok': True, 'updated': updated_count, 'photos': len(pending_photos)})
+
+
+@app.route('/api/flips/<prop_id>/inspections', methods=['GET'])
+@login_required
+def get_inspection_history(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    inspections = (prop.get('project_plan') or {}).get('inspections', [])
+    return jsonify({'inspections': list(reversed(inspections))})
 
 
 @app.route('/api/inspect/photo/<prop_id>/<item_id>', methods=['POST'])
