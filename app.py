@@ -3707,7 +3707,11 @@ def _send_inspection_email(prop, changes, photos, site_notes=''):
                             'ContentType': ctype,
                             'ContentID': f'cid:{cid_str}',
                         })
-                        html += f'<img src="cid:{cid_str}" style="width:180px;height:150px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;">'
+                        note = ph.get('note', '').strip()
+                        html += f'<div style="flex-shrink:0;"><img src="cid:{cid_str}" style="width:180px;height:150px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;display:block;">'
+                        if note:
+                            html += f'<p style="font-size:11px;color:#374151;margin:3px 0 0;max-width:180px;font-style:italic;">{note}</p>'
+                        html += '</div>'
                         attach_idx += 1
                     except Exception as ex:
                         print(f'[postmark] photo read error: {ex}')
@@ -4328,6 +4332,20 @@ def submit_inspection():
     # Pull pending photos and clear them
     pending_photos = prop.pop('pending_photos', []) or []
 
+    # Match per-photo notes from submit body to uploaded photos
+    photo_notes_map = {
+        n['url'].split('?')[0]: n['note']
+        for n in body.get('photo_notes', [])
+        if n.get('url') and n.get('note', '').strip()
+    }
+    photos_for_record = []
+    for p in pending_photos:
+        entry = {'filename': p['filename'], 'url': p['url'], 'category': p.get('category', '')}
+        note = photo_notes_map.get(p['url'].split('?')[0], '')
+        if note:
+            entry['note'] = note
+        photos_for_record.append(entry)
+
     plan = prop.get('project_plan', {}) or {}
     plan.setdefault('inspections', []).append({
         'date': today,
@@ -4335,8 +4353,7 @@ def submit_inspection():
         'changes': email_changes,
         'site_notes': site_notes,
         'category_progress': category_updates,
-        'photos': [{'filename': p['filename'], 'url': p['url'],
-                    'category': p.get('category', '')} for p in pending_photos],
+        'photos': photos_for_record,
     })
     prop['project_plan'] = plan
     save_data(data)
