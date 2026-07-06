@@ -287,23 +287,46 @@ function renderCatGrid() {
   }).join('');
 }
 
+function compressImage(file) {
+  return new Promise(function(resolve, reject) {
+    var img = new Image();
+    var objUrl = URL.createObjectURL(file);
+    img.onload = function() {
+      var MAX = 1920;
+      var w = img.naturalWidth, h = img.naturalHeight;
+      var scale = Math.min(1, MAX / Math.max(w, h));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(objUrl);
+      canvas.toBlob(function(blob) {
+        blob ? resolve(blob) : reject(new Error('toBlob failed'));
+      }, 'image/jpeg', 0.82);
+    };
+    img.onerror = function() { URL.revokeObjectURL(objUrl); reject(new Error('load failed')); };
+    img.src = objUrl;
+  });
+}
+
 async function handleCatPhoto(input, catId) {
   if (!input.files.length) return;
   const file = input.files[0];
   const uid = Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 
-  // Show local preview immediately
-  const reader = new FileReader();
-  reader.onload = e => {
-    catPhotos[catId] = catPhotos[catId] || [];
-    catPhotos[catId].push({ uid, preview: e.target.result, uploading: true });
-    renderCatGrid();
-  };
-  reader.readAsDataURL(file);
+  // Instant preview — createObjectURL is synchronous, no FileReader wait
+  catPhotos[catId] = catPhotos[catId] || [];
+  catPhotos[catId].push({ uid, preview: URL.createObjectURL(file), uploading: true });
+  renderCatGrid();
 
-  // Upload to server
+  // Compress on-device before upload: 1920px max, JPEG 0.82 → ~10-20x smaller than raw iPhone photo
+  let blob = file, fname = (file.name || 'photo.jpg').replace(/\.(heic|heif|png|webp)$/i, '.jpg');
+  try {
+    blob = await compressImage(file);
+  } catch(e) { /* compression failed — fall back to original */ }
+
   const fd = new FormData();
-  fd.append('photo', file);
+  fd.append('photo', blob, fname);
   fd.append('category', catId);
   try {
     const res = await fetch(`/api/inspect/session-photo/${currentPropId}?token=${TOKEN}&category=${encodeURIComponent(catId)}`, {
