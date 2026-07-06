@@ -34,6 +34,29 @@ POSTMARK_SERVER_TOKEN = os.environ.get('POSTMARK_SERVER_TOKEN', '')
 POSTMARK_FROM_EMAIL   = os.environ.get('POSTMARK_FROM_EMAIL', 'noreply@yourfriendlyagent.net')
 INSPECTION_NOTIFY_EMAIL = os.environ.get('INSPECTION_NOTIFY_EMAIL', 'barry@yourfriendlyagent.net')
 
+# Inspection photo categories — mirror of inspector.html CATEGORIES array
+INSPECTION_CATEGORIES = [
+    {'id': 'kitchen',    'label': 'Kitchen',       'icon': '🍳', 'group': 'Interior'},
+    {'id': 'bathrooms',  'label': 'Bathrooms',     'icon': '🚿', 'group': 'Interior'},
+    {'id': 'bedrooms',   'label': 'Bedrooms',      'icon': '🛏',  'group': 'Interior'},
+    {'id': 'living',     'label': 'Living Areas',  'icon': '🪑', 'group': 'Interior'},
+    {'id': 'flooring',   'label': 'Flooring',      'icon': '🪵', 'group': 'Interior'},
+    {'id': 'paint',      'label': 'Paint',         'icon': '🎨', 'group': 'Interior'},
+    {'id': 'drywall',    'label': 'Drywall',       'icon': '🔲', 'group': 'Interior'},
+    {'id': 'electrical', 'label': 'Electrical',    'icon': '⚡', 'group': 'Mechanical'},
+    {'id': 'plumbing',   'label': 'Plumbing',      'icon': '🔧', 'group': 'Mechanical'},
+    {'id': 'hvac',       'label': 'HVAC',          'icon': '🌡', 'group': 'Mechanical'},
+    {'id': 'windows',    'label': 'Windows/Doors', 'icon': '🪟', 'group': 'Exterior'},
+    {'id': 'exterior',   'label': 'Exterior',      'icon': '🏠', 'group': 'Exterior'},
+    {'id': 'roof',       'label': 'Roof',          'icon': '🏗',  'group': 'Exterior'},
+    {'id': 'foundation', 'label': 'Foundation',    'icon': '🧱', 'group': 'Structural'},
+    {'id': 'demo',       'label': 'Demo/Cleanup',  'icon': '🚧', 'group': 'Site'},
+    {'id': 'other',      'label': 'Other',         'icon': '📸', 'group': 'Other'},
+]
+_CAT_LABEL = {c['id']: c['label'] for c in INSPECTION_CATEGORIES}
+_CAT_ICON  = {c['id']: c['icon']  for c in INSPECTION_CATEGORIES}
+_CAT_GROUP = {c['id']: c['group'] for c in INSPECTION_CATEGORIES}
+
 
 class DataSaveError(Exception):
     """Raised when save_data() cannot persist data to disk."""
@@ -3607,13 +3630,13 @@ def _session_photos_dir(prop_id):
     return _ensure_photos_dir(prop_id, 'session')
 
 
-def _send_inspection_email(prop, changes, photos):
-    """Send a Postmark inspection-report email with inline photos."""
+def _send_inspection_email(prop, changes, photos, site_notes=''):
+    """Send a Postmark inspection-report email with photos grouped by category."""
     if not POSTMARK_SERVER_TOKEN:
         return
     addr = f"{prop.get('address', '')} {prop.get('city', '')}".strip()
     today = datetime.now().strftime('%B %d, %Y')
-    subject = f"Inspection: {addr} — {today}"
+    subject = f"Inspection: {addr} | {today}"
 
     html = (
         '<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;">'
@@ -3621,55 +3644,100 @@ def _send_inspection_email(prop, changes, photos):
         f'<p style="color:#6b7280;font-size:15px;margin-bottom:20px;">{addr}&nbsp;&nbsp;|&nbsp;&nbsp;{today}</p>'
     )
 
+    if site_notes:
+        html += (
+            f'<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;margin-bottom:20px;">'
+            f'<div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Site Notes</div>'
+            f'<div style="font-size:14px;color:#0f172a;">{site_notes}</div>'
+            f'</div>'
+        )
+
+    # Group photos by category bucket, preserving category order
+    GROUP_ORDER = ['Interior', 'Mechanical', 'Exterior', 'Structural', 'Site', 'Other']
+    cat_photos = defaultdict(list)  # catId -> [photo]
+    uncategorized = []
+    for ph in photos:
+        cat = ph.get('category', '')
+        if cat:
+            cat_photos[cat].append(ph)
+        else:
+            uncategorized.append(ph)
+
+    # Build group buckets: {group: [(catId, label, icon, [photos])]}
+    group_buckets = defaultdict(list)
+    seen_cats = set()
+    for cat_def in INSPECTION_CATEGORIES:
+        cid = cat_def['id']
+        if cid in cat_photos:
+            group_buckets[cat_def['group']].append((cid, cat_def['label'], cat_def['icon'], cat_photos[cid]))
+            seen_cats.add(cid)
+    if uncategorized:
+        group_buckets['Other'].append(('other', 'Other', '📸', uncategorized))
+
+    attachments = []
+    attach_idx = 0
+
+    if group_buckets:
+        html += f'<h3 style="color:#374151;margin-bottom:16px;">Site Photos ({len(photos)})</h3>'
+        for group in GROUP_ORDER:
+            entries = group_buckets.get(group, [])
+            if not entries:
+                continue
+            html += (
+                f'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;'
+                f'color:#6b7280;margin:16px 0 8px;">{group}</div>'
+            )
+            for cid, label, icon, cat_ph_list in entries:
+                html += (
+                    f'<div style="margin-bottom:14px;">'
+                    f'<div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px;">'
+                    f'{icon} {label} ({len(cat_ph_list)})</div>'
+                    f'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+                )
+                for ph in cat_ph_list[:8]:
+                    try:
+                        with open(ph['path'], 'rb') as fh:
+                            b64_data = base64.b64encode(fh.read()).decode()
+                        ext = os.path.splitext(ph['filename'])[1].lower().lstrip('.')
+                        ctype = 'image/jpeg' if ext in ('jpg', 'jpeg', 'heic') else f'image/{ext}'
+                        cid_str = f'ph{attach_idx}'
+                        attachments.append({
+                            'Name': ph['filename'],
+                            'Content': b64_data,
+                            'ContentType': ctype,
+                            'ContentID': f'cid:{cid_str}',
+                        })
+                        html += f'<img src="cid:{cid_str}" style="width:180px;height:150px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;">'
+                        attach_idx += 1
+                    except Exception as ex:
+                        print(f'[postmark] photo read error: {ex}')
+                if len(cat_ph_list) > 8:
+                    html += f'<p style="color:#6b7280;font-size:12px;align-self:center;">+{len(cat_ph_list)-8} more</p>'
+                html += '</div></div>'
+    else:
+        html += '<p style="color:#6b7280;margin-bottom:20px;">No photos submitted this visit.</p>'
+
+    # WCP item changes (only shown if old inspector flow was used)
     if changes:
-        html += '<h3 style="color:#374151;margin-bottom:10px;">Progress Updates</h3>'
+        html += '<h3 style="color:#374151;margin:20px 0 10px;">WCP Progress Updates</h3>'
         html += (
             '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:14px;">'
             '<tr style="background:#f3f4f6;">'
             '<th style="padding:8px 12px;text-align:left;border:1px solid #e5e7eb;">Item</th>'
             '<th style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;width:60px;">Before</th>'
             '<th style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;width:60px;">After</th>'
-            '<th style="padding:8px 12px;text-align:left;border:1px solid #e5e7eb;">Notes</th>'
             '</tr>'
         )
         for c in changes:
             color = '#16a34a' if c['after'] > c['before'] else '#374151'
-            notes = c.get('notes') or ''
             html += (
                 f'<tr>'
                 f'<td style="padding:8px 12px;border:1px solid #e5e7eb;">{c["name"]}</td>'
                 f'<td style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;">{c["before"]}%</td>'
                 f'<td style="padding:8px 12px;text-align:center;border:1px solid #e5e7eb;font-weight:bold;color:{color};">{c["after"]}%</td>'
-                f'<td style="padding:8px 12px;border:1px solid #e5e7eb;color:#6b7280;">{notes}</td>'
                 f'</tr>'
             )
         html += '</table>'
-    else:
-        html += '<p style="color:#6b7280;margin-bottom:20px;">No completion updates this visit.</p>'
-
-    attachments = []
-    if photos:
-        html += f'<h3 style="color:#374151;margin-bottom:10px;">Site Photos ({len(photos)})</h3>'
-        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">'
-        for i, ph in enumerate(photos[:12]):
-            try:
-                with open(ph['path'], 'rb') as fh:
-                    b64_data = base64.b64encode(fh.read()).decode()
-                ext = os.path.splitext(ph['filename'])[1].lower().lstrip('.')
-                ctype = 'image/jpeg' if ext in ('jpg', 'jpeg', 'heic') else f'image/{ext}'
-                cid = f'ph{i}'
-                attachments.append({
-                    'Name': ph['filename'],
-                    'Content': b64_data,
-                    'ContentType': ctype,
-                    'ContentID': f'cid:{cid}',
-                })
-                html += f'<img src="cid:{cid}" style="max-width:280px;max-height:240px;border-radius:6px;border:1px solid #e5e7eb;">'
-            except Exception as ex:
-                print(f'[postmark] photo read error: {ex}')
-        if len(photos) > 12:
-            html += f'<p style="color:#6b7280;font-size:13px;">...and {len(photos) - 12} more photos in the tracker.</p>'
-        html += '</div>'
 
     html += '</div>'
 
@@ -4160,12 +4228,14 @@ def upload_session_photo(prop_id):
     photo_url = f'/photos/{prop_id}/session/{filename}?token={token}'
     data = load_data()
     prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    category = request.args.get('category') or request.form.get('category', '')
     if prop is not None:
         prop.setdefault('pending_photos', []).append({
             'filename': filename,
             'path': filepath,
             'url': photo_url,
             'uploaded': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'category': category,
         })
         save_data(data)
     return jsonify({'ok': True, 'url': photo_url})
@@ -4178,6 +4248,7 @@ def submit_inspection():
     body = request.get_json(silent=True) or {}
     prop_id = body.get('prop_id')
     updates = body.get('updates', [])
+    site_notes = (body.get('site_notes') or '').strip()
     data = load_data()
     prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
     if not prop:
@@ -4186,7 +4257,7 @@ def submit_inspection():
     today = datetime.now().strftime('%Y-%m-%d')
     item_by_id = {i['id']: i for i in prop.get('scope_items', [])}
 
-    # Capture before state, apply updates, record changes for the email
+    # Apply any WCP item updates (backward compat — new inspector sends empty list)
     email_changes = []
     updated_count = 0
     for upd in updates:
@@ -4216,14 +4287,20 @@ def submit_inspection():
         'date': today,
         'items_updated': updated_count,
         'changes': email_changes,
-        'photos': [{'filename': p['filename'], 'url': p['url']} for p in pending_photos],
+        'site_notes': site_notes,
+        'photos': [{'filename': p['filename'], 'url': p['url'],
+                    'category': p.get('category', '')} for p in pending_photos],
     })
     prop['project_plan'] = plan
     save_data(data)
 
     # Fire email in background so the APM doesn't wait on it
-    if email_changes or pending_photos:
-        t = threading.Thread(target=_send_inspection_email, args=(prop, email_changes, pending_photos), daemon=True)
+    if site_notes or email_changes or pending_photos:
+        t = threading.Thread(
+            target=_send_inspection_email,
+            args=(prop, email_changes, pending_photos, site_notes),
+            daemon=True,
+        )
         t.start()
 
     metrics = calc_project_metrics(prop)
