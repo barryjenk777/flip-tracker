@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Draw Package — {{ addr }}</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; font-size: 15px; }
+
+.header { background: #1a2740; color: white; padding: 14px 16px; }
+.header h1 { font-size: 16px; font-weight: 700; }
+.header .sub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+
+.total-card { margin: 16px 16px 0; background: white; border-radius: 14px; border: 1px solid #e5e7eb; overflow: hidden; }
+.total-inner { padding: 20px 20px 16px; }
+.total-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #6b7280; margin-bottom: 4px; }
+.total-amount { font-size: 36px; font-weight: 800; color: #15803d; letter-spacing: -0.5px; }
+.total-meta { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+
+.copy-btn { display: block; width: calc(100% - 40px); margin: 10px 20px 16px; padding: 12px; background: #1a2740; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; -webkit-tap-highlight-color: transparent; }
+.copy-btn:active { opacity: 0.85; }
+.copy-btn.copied { background: #15803d; }
+
+.section-title { margin: 20px 16px 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #374151; }
+
+.phase-card { margin: 0 16px 10px; background: white; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; }
+.phase-header { padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+.phase-name { font-size: 12px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.4px; }
+.phase-subtotal { font-size: 14px; font-weight: 800; color: #15803d; }
+.line-item { padding: 10px 16px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
+.line-item:last-child { border-bottom: none; }
+.line-name { font-size: 13px; font-weight: 600; color: #111827; flex: 1; }
+.line-right { text-align: right; flex-shrink: 0; margin-left: 12px; }
+.line-pct { font-size: 11px; color: #6b7280; display: block; }
+.line-amt { font-size: 14px; font-weight: 700; color: #1a2740; }
+
+.no-draw { margin: 16px 16px 0; padding: 24px; background: white; border-radius: 12px; border: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 14px; }
+
+.photo-section { margin: 20px 16px 0; }
+.inspection-group { margin-bottom: 16px; }
+.inspection-date { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.photo-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; cursor: pointer; display: block; }
+
+.lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center; padding: 16px; }
+.lightbox.active { display: flex; }
+.lightbox img { max-width: 100%; max-height: 100vh; border-radius: 8px; object-fit: contain; }
+.lightbox-close { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.15); color: white; border: none; border-radius: 50%; width: 36px; height: 36px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+.bottom-space { height: 32px; }
+
+@media print {
+  .copy-btn { display: none; }
+  .lightbox { display: none !important; }
+  body { background: white; }
+  .phase-card, .total-card { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>{{ addr }}</h1>
+  <div class="sub">Draw #{{ draw_number }} &nbsp;|&nbsp; {{ today }}</div>
+</div>
+
+<div class="total-card">
+  <div class="total-inner">
+    <div class="total-label">Total Draw Request</div>
+    {% if total_eligible > 0 %}
+      <div class="total-amount">${{ "{:,.0f}".format(total_eligible) }}</div>
+      <div class="total-meta">Based on work completed since last draw</div>
+    {% else %}
+      <div class="total-amount" style="color:#9ca3af">$0</div>
+      <div class="total-meta">No eligible draw amounts at this time</div>
+    {% endif %}
+  </div>
+  {% if total_eligible > 0 %}
+  <button class="copy-btn" onclick="copyText()">Copy Draw Text</button>
+  {% endif %}
+</div>
+
+{% if active_phases %}
+<div class="section-title">Phase Breakdown</div>
+{% for pg in active_phases %}
+<div class="phase-card">
+  <div class="phase-header">
+    <span class="phase-name">{{ pg.phase }}</span>
+    <span class="phase-subtotal">${{ "{:,.0f}".format(pg.subtotal) }}</span>
+  </div>
+  {% for it in pg.items %}
+  <div class="line-item">
+    <span class="line-name">{{ it.name }}</span>
+    <div class="line-right">
+      <span class="line-pct">{{ it.completion_pct }}% done{% if it.drawn_pct > 0 %} ({{ it.drawn_pct }}% prev drawn){% endif %}</span>
+      <span class="line-amt">${{ "{:,.0f}".format(it.eligible_amt) }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% else %}
+<div class="no-draw">No items with eligible draw amounts. Update completion percentages during inspection to generate a draw.</div>
+{% endif %}
+
+{% if inspection_history %}
+<div class="section-title" style="margin-top:24px">Inspection Photos</div>
+<div class="photo-section">
+  {% for insp in inspection_history %}
+  <div class="inspection-group">
+    <div class="inspection-date">{{ insp.date }}</div>
+    <div class="photo-grid">
+      {% for ph in insp.photos %}
+      <img class="photo-thumb" src="{{ ph.url }}" onclick="openPhoto('{{ ph.url }}')" loading="lazy">
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="bottom-space"></div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="Photo">
+</div>
+
+<textarea id="draw-text-hidden" style="position:absolute;left:-9999px;top:-9999px;" readonly>{{ draw_text }}</textarea>
+
+<script>
+function openPhoto(url) {
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox').classList.add('active');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+  document.getElementById('lightbox-img').src = '';
+}
+function copyText() {
+  const el = document.getElementById('draw-text-hidden');
+  el.select();
+  el.setSelectionRange(0, 99999);
+  try {
+    navigator.clipboard.writeText(el.value).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy Draw Text'; btn.classList.remove('copied'); }, 2000);
+    });
+  } catch (e) {
+    document.execCommand('copy');
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy Draw Text'; btn.classList.remove('copied'); }, 2000);
+  }
+}
+</script>
+</body>
+</html>

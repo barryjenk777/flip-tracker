@@ -504,7 +504,8 @@ async function submitInspection() {
         const banner = document.createElement('div');
         banner.id = 'draw-unlock-banner';
         banner.className = 'draw-unlock';
-        banner.textContent = `This inspection unlocked $${res.drawable_now.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} in draw eligibility`;
+        const fmt = res.drawable_now.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+        banner.innerHTML = `<div>Inspection unlocked $${fmt} in draw eligibility</div><a href="/draw-package/${currentPropId}?token=${TOKEN}" style="display:block;margin-top:6px;color:#15803d;font-size:13px;font-weight:600;text-decoration:underline;">View Draw Package &rarr;</a>`;
         main.prepend(banner);
       }
 

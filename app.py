@@ -3724,6 +3724,91 @@ def inspector_app():
     return render_template('inspector.html')
 
 
+@app.route('/draw-package/<prop_id>')
+def draw_package(prop_id):
+    if not _check_inspector_token():
+        return '<h2 style="font-family:sans-serif;padding:40px;color:#c00">Invalid or missing access token.</h2>', 403
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return '<h2 style="font-family:sans-serif;padding:40px;">Property not found.</h2>', 404
+
+    addr = f"{prop.get('address', '')} {prop.get('city', '')} {prop.get('state', '')}".strip()
+    today = datetime.now().strftime('%B %d, %Y')
+    plan = prop.get('project_plan', {}) or {}
+    scope = prop.get('scope_items', [])
+    prior_draws = plan.get('draws', [])
+    draw_number = len(prior_draws) + 1
+
+    # Per-phase draw eligibility (completion - already-drawn)
+    phase_buckets = {ph_order: {'phase': ph, 'phase_order': ph_order, 'items': [], 'subtotal': 0.0}
+                     for ph, ph_order, _ in WCP_SCHEMA}
+    total_eligible = 0.0
+    draw_lines = []  # for copy-text
+
+    for item in scope:
+        drawn_pct = item.get('drawn_pct', 0) or 0
+        eligible_pct = item['completion_pct'] - drawn_pct
+        if eligible_pct <= 0:
+            continue
+        eligible_amt = round(item['budget'] * eligible_pct / 100.0, 2)
+        if eligible_amt <= 0:
+            continue
+        pg = phase_buckets[item['phase_order']]
+        pg['items'].append({
+            'name': item['name'],
+            'budget': item['budget'],
+            'completion_pct': item['completion_pct'],
+            'drawn_pct': drawn_pct,
+            'eligible_pct': eligible_pct,
+            'eligible_amt': eligible_amt,
+        })
+        pg['subtotal'] = round(pg['subtotal'] + eligible_amt, 2)
+        total_eligible = round(total_eligible + eligible_amt, 2)
+
+    active_phases = [phase_buckets[ph_order] for _, ph_order, _ in WCP_SCHEMA
+                     if phase_buckets[ph_order]['items']]
+
+    # Build plain-text draw summary for copy-to-clipboard
+    text_lines = [
+        f'DRAW REQUEST - {addr}',
+        f'Date: {today}',
+        f'Draw #{draw_number}',
+        '',
+    ]
+    for pg in active_phases:
+        text_lines.append(pg['phase'])
+        for it in pg['items']:
+            text_lines.append(f"  {it['name']}: {it['completion_pct']}% complete, ${it['eligible_amt']:,.2f}")
+        text_lines.append(f"  Subtotal: ${pg['subtotal']:,.2f}")
+        text_lines.append('')
+    text_lines.append(f"TOTAL DRAW REQUEST: ${total_eligible:,.2f}")
+    draw_text = '\n'.join(text_lines)
+
+    # Collect inspection photos (most recent first), rebuild URLs with current token
+    token = request.args.get('token') or request.headers.get('X-Inspector-Token', '')
+    inspection_history = []
+    for insp in reversed(plan.get('inspections', [])):
+        photos = insp.get('photos', [])
+        if photos:
+            rebuilt = [{'filename': p['filename'],
+                        'url': f'/photos/{prop_id}/session/{p["filename"]}?token={token}'}
+                       for p in photos]
+            inspection_history.append({'date': insp['date'], 'photos': rebuilt})
+
+    return render_template('draw_package.html',
+        addr=addr,
+        today=today,
+        draw_number=draw_number,
+        total_eligible=total_eligible,
+        active_phases=active_phases,
+        inspection_history=inspection_history,
+        draw_text=draw_text,
+        token=token,
+        prop_id=prop_id,
+    )
+
+
 @app.route('/photos/<prop_id>/<item_id>/<filename>')
 def serve_photo(prop_id, item_id, filename):
     if not (check_auth() or _check_inspector_token()):
