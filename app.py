@@ -4018,6 +4018,35 @@ def update_scope_item(prop_id, item_id):
     return jsonify({'ok': True, 'metrics': calc_project_metrics(prop)})
 
 
+@app.route('/api/flips/<prop_id>/scope/bulk-update', methods=['POST'])
+@login_required
+def bulk_update_scope(prop_id):
+    data = load_data()
+    prop = next((p for p in data['properties'] if p.get('id') == prop_id), None)
+    if not prop:
+        return jsonify({'error': 'Property not found'}), 404
+    body = request.get_json(silent=True) or {}
+    updates = body.get('updates', [])
+    insp_date = body.get('inspection_date')
+    today = datetime.now().strftime('%Y-%m-%d')
+    item_by_id = {i['id']: i for i in prop.get('scope_items', [])}
+    updated = 0
+    for upd in updates:
+        item = item_by_id.get(upd.get('item_id'))
+        if item and 'completion_pct' in upd:
+            item['completion_pct'] = int(upd['completion_pct'])
+            item['last_updated'] = today
+            item['updated_by'] = 'admin'
+            updated += 1
+    if insp_date:
+        plan = prop.get('project_plan', {}) or {}
+        for insp in plan.get('inspections', []):
+            if insp.get('date') == insp_date:
+                insp['reviewed'] = True
+    save_data(data)
+    return jsonify({'ok': True, 'updated': updated, 'metrics': calc_project_metrics(prop)})
+
+
 @app.route('/api/flips/<prop_id>/project', methods=['POST'])
 @login_required
 def set_project_plan(prop_id):

@@ -6172,6 +6172,10 @@ function renderProjectCard(flip, data) {
     const hasScope = scope.length > 0;
     const fmtD = v => '$' + (v || 0).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
 
+    const inspections = plan.inspections || [];
+    const unreviewedInsps = inspections.filter(i => !i.reviewed && (i.photos || []).length > 0);
+    const latestUnreviewed = unreviewedInsps.length ? unreviewedInsps[unreviewedInsps.length - 1] : null;
+
     let timelineHtml = '';
     if (m.has_project && m.projected_days) {
         const pct = Math.min(m.days_elapsed / m.projected_days * 100, 100);
@@ -6249,6 +6253,15 @@ function renderProjectCard(flip, data) {
                 ${!hasScope ? `<button class="btn btn-secondary" style="font-size:12px;padding:5px 12px;opacity:0.85;" onclick="bootstrapFromExpenses('${flip.id}')">Seed from Expenses</button>` : ''}
             </div>
         </div>
+
+        ${latestUnreviewed ? `
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+            <div>
+                <div style="font-size:12px;font-weight:700;color:#92400e;">New Inspection Ready to Review</div>
+                <div style="font-size:11px;color:#b45309;margin-top:1px;">${latestUnreviewed.date} — ${(latestUnreviewed.photos||[]).length} photo${(latestUnreviewed.photos||[]).length !== 1 ? 's' : ''}${latestUnreviewed.site_notes ? ' — has site notes' : ''}</div>
+            </div>
+            <button class="btn" style="background:#d97706;color:white;border-color:#d97706;font-size:12px;padding:6px 16px;white-space:nowrap;flex-shrink:0;" onclick="openReview('${flip.id}','${latestUnreviewed.date}')">Review</button>
+        </div>` : ''}
 
         ${!hasScope ? `<div style="font-size:13px;color:var(--text-muted);padding:8px 0;">Upload the WCP Construction Budget (PDF or XLSX) to load the scope of work.</div>` : ''}
 
@@ -6390,6 +6403,177 @@ function copyInspectorLink() {
     navigator.clipboard.writeText(text).then(() => showToast('Link copied to clipboard.'));
 }
 
+// ---- Inspection Review ----
+
+const CAT_TO_SCOPE = {
+    kitchen:    ['Kitchen Cabinets', 'Countertops', 'Appliances', 'Kitchen Backsplash'],
+    bathrooms:  ['Plumbing Fixtures', 'Tile Work', 'Vanities & Mirrors', 'Bath Accessories'],
+    bedrooms:   ['Drywall', 'Interior Painting', 'Flooring', 'Interior Doors & Hardware', 'Closets'],
+    living:     ['Drywall', 'Interior Painting', 'Flooring', 'Interior Doors & Hardware'],
+    flooring:   ['Flooring', 'Stair Treads & Railings'],
+    paint:      ['Interior Painting', 'Exterior Paint', 'Trim'],
+    drywall:    ['Drywall', 'Insulation'],
+    electrical: ['Electrical Rough-In', 'Electrical Fixtures', 'Low Voltage/Smart Home'],
+    plumbing:   ['Plumbing Rough-in', 'Plumbing Fixtures'],
+    hvac:       ['Mechanical Rough-in', 'Mechanical Finishes'],
+    windows:    ['Windows', 'Exterior Doors & Frames', 'Interior Doors & Hardware'],
+    exterior:   ['Siding', 'Exterior Paint', 'Trim'],
+    roof:       ['Roofing & Flashing'],
+    foundation: ['Foundation & Concrete'],
+    demo:       ['Interior Demolition', 'Dumpsters & Trash Removal', 'Final Cleaning'],
+    other:      [],
+};
+const CAT_ICONS  = { kitchen:'🍳', bathrooms:'🚿', bedrooms:'🛏', living:'🪑', flooring:'🪵', paint:'🎨', drywall:'🔲', electrical:'⚡', plumbing:'🔧', hvac:'🌡', windows:'🪟', exterior:'🏠', roof:'🏗', foundation:'🧱', demo:'🚧', other:'📸' };
+const CAT_LABELS = { kitchen:'Kitchen', bathrooms:'Bathrooms', bedrooms:'Bedrooms', living:'Living Areas', flooring:'Flooring', paint:'Paint', drywall:'Drywall', electrical:'Electrical', plumbing:'Plumbing', hvac:'HVAC', windows:'Windows/Doors', exterior:'Exterior', roof:'Roof', foundation:'Foundation', demo:'Demo/Cleanup', other:'Other' };
+const CAT_ORDER  = ['kitchen','bathrooms','bedrooms','living','flooring','paint','drywall','electrical','plumbing','hvac','windows','exterior','roof','foundation','demo','other'];
+
+let _reviewPropId = null;
+let _reviewInspDate = null;
+let _reviewChanges = {};
+
+function openReview(propId, inspDate) {
+    _reviewPropId = propId;
+    _reviewInspDate = inspDate;
+    _reviewChanges = {};
+    const data = _projectData[propId] || {};
+    const inspections = (data.project_plan || {}).inspections || [];
+    const insp = inspections.find(i => i.date === inspDate);
+    if (!insp) return;
+    const scope = data.scope_items || [];
+    const propAddress = ((flipData || {}).properties || []).find(f => f.id === propId)?.address || '';
+    const photoCount = (insp.photos || []).length;
+
+    // Group photos by category
+    const catPhotos = {};
+    for (const ph of (insp.photos || [])) {
+        const cat = ph.category || 'other';
+        catPhotos[cat] = catPhotos[cat] || [];
+        catPhotos[cat].push(ph);
+    }
+
+    document.getElementById('review-header').innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:16px 20px;border-bottom:1px solid var(--border);">
+            <div>
+                <div style="font-size:16px;font-weight:800;color:var(--text-primary);">Review Inspection</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${propAddress} | ${inspDate} | ${photoCount} photo${photoCount !== 1 ? 's' : ''}</div>
+            </div>
+            <button onclick="closeReview()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);line-height:1;padding:0 4px;">✕</button>
+        </div>`;
+
+    let bodyHtml = '';
+    if (insp.site_notes) {
+        bodyHtml += `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:16px;">
+            <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Site Notes</div>
+            <div style="font-size:14px;color:var(--text-primary);">${insp.site_notes}</div>
+        </div>`;
+    }
+
+    const coveredItemIds = new Set();
+    const catsWithPhotos = CAT_ORDER.filter(c => catPhotos[c]?.length > 0);
+
+    for (const catId of catsWithPhotos) {
+        const photos = catPhotos[catId];
+        const label = CAT_LABELS[catId] || catId;
+        const icon  = CAT_ICONS[catId]  || '📸';
+        const mappedNames = CAT_TO_SCOPE[catId] || [];
+        const matchingItems = mappedNames.length === 0 ? [] : scope.filter(item =>
+            mappedNames.some(n => item.name.toLowerCase().includes(n.toLowerCase()) || n.toLowerCase().includes(item.name.toLowerCase()))
+        );
+        matchingItems.forEach(i => coveredItemIds.add(i.id));
+
+        const thumbs = photos.map(ph => {
+            const url = (ph.url || '').split('?')[0];
+            return `<img src="${url}" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;flex-shrink:0;" onclick="reviewLightbox('${url}')">`;
+        }).join('');
+
+        bodyHtml += `<div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--bg-secondary);">
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:8px;">${icon} ${label} (${photos.length} photo${photos.length !== 1 ? 's' : ''})</div>
+            <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:${matchingItems.length ? '12px' : '0'};">${thumbs}</div>
+            ${matchingItems.map(item => _reviewItemHtml(item)).join('')}
+        </div>`;
+    }
+
+    const remaining = scope.filter(i => !coveredItemIds.has(i.id) && i.completion_pct < 100);
+    if (remaining.length) {
+        bodyHtml += `<details style="margin-top:4px;">
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--text-secondary);padding:6px 0;list-style:none;display:flex;align-items:center;gap:6px;">
+                <span style="font-size:11px;">▸</span> Other items (${remaining.length})
+            </summary>
+            <div style="margin-top:10px;">${remaining.map(item => _reviewItemHtml(item)).join('')}</div>
+        </details>`;
+    }
+
+    if (!bodyHtml) bodyHtml = '<div style="padding:20px 0;text-align:center;color:var(--text-muted);font-size:14px;">No photos in this inspection.</div>';
+
+    document.getElementById('review-body').innerHTML = bodyHtml;
+    document.getElementById('review-overlay').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function _reviewItemHtml(item) {
+    const curPct = _reviewChanges[item.id] !== undefined ? _reviewChanges[item.id] : item.completion_pct;
+    const btns = [0,25,50,75,100].map(p =>
+        `<button data-item="${item.id}" data-pct="${p}" onclick="setReviewPct('${item.id}',${p},this)"
+            style="flex:1;padding:7px 2px;border:1.5px solid ${curPct===p?'#1a2740':'var(--border)'};border-radius:7px;background:${curPct===p?'#1a2740':'var(--bg-primary)'};color:${curPct===p?'white':'var(--text-secondary)'};font-size:12px;font-weight:600;cursor:pointer;">${p}%</button>`
+    ).join('');
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--bg-secondary);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${item.name}</div>
+            ${item.budget > 0 ? `<div style="font-size:11px;color:var(--text-muted);">$${item.budget.toLocaleString()}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:5px;" id="review-btns-${item.id}">${btns}</div>
+    </div>`;
+}
+
+function setReviewPct(itemId, pct, btn) {
+    _reviewChanges[itemId] = pct;
+    const container = document.getElementById('review-btns-' + itemId);
+    if (!container) return;
+    container.querySelectorAll('button').forEach(b => {
+        const active = parseInt(b.dataset.pct) === pct;
+        b.style.border = `1.5px solid ${active ? '#1a2740' : 'var(--border)'}`;
+        b.style.background = active ? '#1a2740' : 'var(--bg-primary)';
+        b.style.color = active ? 'white' : 'var(--text-secondary)';
+    });
+}
+
+function closeReview() {
+    document.getElementById('review-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    _reviewChanges = {};
+}
+
+async function saveReview() {
+    const saveBtn = document.getElementById('review-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+    const updates = Object.entries(_reviewChanges).map(([item_id, completion_pct]) => ({ item_id, completion_pct }));
+    try {
+        const res = await apiFetch(`/api/flips/${_reviewPropId}/scope/bulk-update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates, inspection_date: _reviewInspDate }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+            closeReview();
+            showToast(`Progress saved. ${updates.length} item${updates.length !== 1 ? 's' : ''} updated.`);
+            loadProjects();
+        } else {
+            showToast(json.error || 'Save failed.', true);
+        }
+    } catch(e) { showToast('Connection error.', true); }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Progress'; }
+}
+
+function reviewLightbox(url) {
+    document.getElementById('review-lb-img').src = url;
+    document.getElementById('review-lightbox').style.display = 'flex';
+}
+function closeReviewLightbox() {
+    document.getElementById('review-lightbox').style.display = 'none';
+    document.getElementById('review-lb-img').src = '';
+}
+
 // ---- Init ----
 loadFlips();
 loadProspects();
@@ -6398,5 +6582,22 @@ initCmdYear();
 loadVendorDefaults();
 runVendorBackfill();
 </script>
+
+<!-- Inspection Review Modal -->
+<div id="review-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:2000;overflow-y:auto;padding:16px;">
+    <div style="background:var(--bg-primary);max-width:720px;margin:0 auto;border-radius:16px;overflow:hidden;">
+        <div id="review-header"></div>
+        <div id="review-body" style="padding:16px 20px;max-height:62vh;overflow-y:auto;"></div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-primary);">
+            <button id="review-save-btn" onclick="saveReview()" style="width:100%;padding:14px;background:#1a2740;color:white;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Save Progress</button>
+        </div>
+    </div>
+</div>
+
+<!-- Photo lightbox inside review -->
+<div id="review-lightbox" onclick="closeReviewLightbox()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:3000;align-items:center;justify-content:center;padding:20px;">
+    <img id="review-lb-img" src="" style="max-width:100%;max-height:88vh;border-radius:8px;object-fit:contain;">
+</div>
+
 </body>
 </html>
