@@ -6468,6 +6468,12 @@ function openReview(propId, inspDate) {
         </div>`;
     }
 
+    // Build APM-reported progress map from category_progress snapshot
+    const catProgressMap = {};
+    for (const cp of (insp.category_progress || [])) {
+        catProgressMap[cp.category_id] = cp.completion_pct;
+    }
+
     const coveredItemIds = new Set();
     const catsWithPhotos = CAT_ORDER.filter(c => catPhotos[c]?.length > 0);
 
@@ -6483,12 +6489,21 @@ function openReview(propId, inspDate) {
 
         const thumbs = photos.map(ph => {
             const url = (ph.url || '').split('?')[0];
-            return `<img src="${url}" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;flex-shrink:0;" onclick="reviewLightbox('${url}')">`;
+            const note = (ph.note || '').trim();
+            return `<div style="flex-shrink:0;">
+                <img src="${url}" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;display:block;" onclick="reviewLightbox('${url}')">
+                ${note ? `<div style="width:72px;font-size:10px;color:var(--text-secondary);margin-top:3px;font-style:italic;word-break:break-word;line-height:1.3;">${note}</div>` : ''}
+            </div>`;
         }).join('');
 
+        const apmPct = catProgressMap[catId];
+        const apmHint = apmPct !== undefined
+            ? `<span style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:6px;margin-left:8px;font-weight:600;">APM: ${apmPct}%</span>`
+            : '';
+
         bodyHtml += `<div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--bg-secondary);">
-            <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:8px;">${icon} ${label} (${photos.length} photo${photos.length !== 1 ? 's' : ''})</div>
-            <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:${matchingItems.length ? '12px' : '0'};">${thumbs}</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:8px;">${icon} ${label} (${photos.length} photo${photos.length !== 1 ? 's' : ''})${apmHint}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-bottom:6px;margin-bottom:${matchingItems.length ? '12px' : '0'};">${thumbs}</div>
             ${matchingItems.map(item => _reviewItemHtml(item)).join('')}
         </div>`;
     }
