@@ -1744,30 +1744,6 @@ def flip_dashboard():
     return render_template('flip_tracker.html')
 
 
-@app.route('/admin/apply-dates')
-def admin_apply_dates():
-    if request.args.get('key') != 'bjflips2026':
-        return 'unauthorized', 403
-    UPDATES = [
-        {'match': '22nd',    'purchase_date': '2026-01-31'},
-        {'match': 'orton',   'purchase_date': '2026-02-27', 'estimated_sale_date': '2026-07-22'},
-        {'match': 'brides',  'purchase_date': '2026-04-01'},
-        {'match': 'adair',   'purchase_date': '2026-04-26'},
-        {'match': 'clemson', 'purchase_date': '2026-04-27'},
-    ]
-    data = load_data()
-    lines = []
-    for upd in UPDATES:
-        key = upd.pop('match')
-        prop = next((p for p in data['properties'] if key in (p.get('address') or '').lower()), None)
-        if not prop:
-            lines.append(f'NOT FOUND: {key}')
-            continue
-        prop.update(upd)
-        lines.append(f'OK: {prop["address"]} → {upd}')
-    save_data(data)
-    return '<br>'.join(lines)
-
 
 @app.route('/api/flips', methods=['GET'])
 def get_flips():
