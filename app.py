@@ -1745,6 +1745,54 @@ def flip_dashboard():
 
 
 
+@app.route('/admin/export-summary')
+def admin_export_summary():
+    if request.args.get('key') != 'bjexport2026':
+        return 'unauthorized', 403
+    data = load_data()
+    out = []
+    for prop in data.get('properties', []):
+        if prop.get('status') == 'closed':
+            continue
+        m = calc_property_metrics(prop)
+        draws = prop.get('draws', [])
+        total_drawn = sum(d.get('amount', 0) for d in draws)
+        total_loan = prop.get('loan_amount') or prop.get('purchase_loan') or 0
+        expenses = prop.get('expenses', [])
+        total_reno_spend = sum(e.get('amount', 0) for e in expenses)
+        holding = prop.get('holding_costs', {})
+        monthly_hold = sum([
+            holding.get('monthly_insurance', 0) or 0,
+            holding.get('monthly_taxes', 0) or 0,
+            holding.get('monthly_utilities', 0) or 0,
+            holding.get('monthly_interest', 0) or 0,
+            holding.get('monthly_other', 0) or 0,
+        ])
+        scope_items = prop.get('scope_items', [])
+        total_scope_budget = sum(i.get('budget', 0) or 0 for i in scope_items)
+        out.append({
+            'address': prop.get('address', ''),
+            'status': m.get('status', ''),
+            'purchase_date': prop.get('purchase_date', ''),
+            'purchase_price': prop.get('purchase_price') or prop.get('list_price') or 0,
+            'arv': prop.get('arv') or prop.get('estimated_sale_price') or 0,
+            'loan_amount': total_loan,
+            'total_drawn': total_drawn,
+            'reno_spend': total_reno_spend,
+            'scope_budget': total_scope_budget,
+            'monthly_holding': monthly_hold,
+            'estimated_sale_date': prop.get('estimated_sale_date', ''),
+            'overall_pct': m.get('overall_pct', 0),
+            'drawable_now': m.get('drawable_now', 0),
+            'cash_invested': m.get('cash_invested', 0),
+            'expected_profit': m.get('net_profit', 0),
+        })
+    overhead = data.get('overhead_expenses', [])
+    monthly_overhead = sum(e.get('amount', 0) for e in overhead if e.get('frequency') in ('monthly', 'Monthly'))
+    import json as _json
+    return app.response_class(_json.dumps({'properties': out, 'monthly_overhead': monthly_overhead}, indent=2), mimetype='application/json')
+
+
 @app.route('/api/flips', methods=['GET'])
 def get_flips():
     data = load_data()
