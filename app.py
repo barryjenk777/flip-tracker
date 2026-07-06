@@ -4322,33 +4322,8 @@ def submit_inspection():
                     'notes': upd.get('notes') or item.get('notes') or '',
                 })
 
-    # Apply phase-level updates: distribute one % across all items in a phase
-    phase_updates = body.get('phase_updates', [])
-    for pu in phase_updates:
-        phase_name = pu.get('phase')
-        pct = pu.get('completion_pct')
-        if phase_name is None or pct is None:
-            continue
-        phase_scope = [i for i in prop.get('scope_items', []) if i.get('phase') == phase_name]
-        if not phase_scope:
-            continue
-        total_budget = sum(i.get('budget') or 0 for i in phase_scope)
-        if total_budget > 0:
-            before_pct = round(sum((i.get('budget') or 0) * (i.get('completion_pct') or 0) for i in phase_scope) / total_budget)
-        else:
-            before_pct = round(sum(i.get('completion_pct') or 0 for i in phase_scope) / len(phase_scope))
-        for item in phase_scope:
-            item['completion_pct'] = int(pct)
-            item['last_updated'] = today
-            item['updated_by'] = 'inspector'
-        updated_count += len(phase_scope)
-        if int(pct) != before_pct:
-            email_changes.append({
-                'name': phase_name,
-                'before': before_pct,
-                'after': int(pct),
-                'notes': 'Phase updated by inspector',
-            })
+    # Store category-level progress snapshot from inspector (no WCP item writes — Barry reviews)
+    category_updates = body.get('category_updates', [])
 
     # Pull pending photos and clear them
     pending_photos = prop.pop('pending_photos', []) or []
@@ -4359,6 +4334,7 @@ def submit_inspection():
         'items_updated': updated_count,
         'changes': email_changes,
         'site_notes': site_notes,
+        'category_progress': category_updates,
         'photos': [{'filename': p['filename'], 'url': p['url'],
                     'category': p.get('category', '')} for p in pending_photos],
     })
