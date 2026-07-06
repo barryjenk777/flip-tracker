@@ -60,6 +60,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .empty-state p { font-size: 15px; margin-bottom: 8px; }
 .empty-state small { font-size: 12px; }
 .loading { padding: 40px; text-align: center; color: #6b7280; font-size: 14px; }
+
+/* Phase progress */
+.phase-section { margin: 14px 12px 0; }
+.phase-list { background: white; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; }
+.phase-row { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.phase-row:last-child { border-bottom: none; }
+.phase-row.expanded { background: #f8fafc; }
+.phase-row-top { display: flex; justify-content: space-between; align-items: center; }
+.phase-row-name { font-size: 13px; font-weight: 600; color: #111827; flex: 1; padding-right: 10px; }
+.phase-row-pct { font-size: 15px; font-weight: 700; color: #2563eb; min-width: 38px; text-align: right; }
+.phase-row-pct.updated { color: #d97706; }
+.pct-buttons { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding-top: 10px; }
+.pct-btn { padding: 9px 0; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pct-btn:active { opacity: 0.7; }
+.pct-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
 </style>
 </head>
 <body>
@@ -79,6 +94,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <div id="main-content">
   <div class="loading">Loading properties...</div>
 </div>
+
+<div id="phase-progress-wrap"></div>
 
 <div id="cat-section-wrap" style="display:none">
   <div class="cat-section">
@@ -105,6 +122,57 @@ const TOKEN = new URLSearchParams(window.location.search).get('token') || '';
 let allProperties = [];
 let currentPropId = null;
 let catPhotos = {}; // { catId: [{uid, preview, url, uploading}] }
+let phaseUpdates = {}; // { 'Interior Work': 65 }
+let expandedPhase = null;
+
+function renderPhaseProgress(prop) {
+  const phases = prop.phases || [];
+  const wrap = document.getElementById('phase-progress-wrap');
+  if (!phases.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = '<div class="phase-section"><div class="cat-section-header">Project Progress — tap to update</div><div class="phase-list" id="phase-list">' +
+    phases.map(ph => renderPhaseRow(ph)).join('') + '</div></div>';
+}
+
+function renderPhaseRow(ph) {
+  const displayPct = phaseUpdates.hasOwnProperty(ph.phase) ? phaseUpdates[ph.phase] : ph.pct;
+  const isUpdated = phaseUpdates.hasOwnProperty(ph.phase);
+  const isExpanded = expandedPhase === ph.phase;
+  const esc = ph.phase.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const PCT_OPTS = [0, 25, 50, 75, 100];
+  const buttons = isExpanded
+    ? '<div class="pct-buttons">' + PCT_OPTS.map(p =>
+        `<button class="pct-btn${displayPct === p ? ' active' : ''}" onclick="event.stopPropagation();setPhaseProgress('${esc}',${p})">${p}%</button>`
+      ).join('') + '</div>'
+    : '';
+  const updatedBadge = isUpdated
+    ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:6px;font-weight:700;">updated</span>'
+    : '';
+  return `<div class="phase-row${isExpanded ? ' expanded' : ''}" onclick="togglePhase('${esc}')">
+    <div class="phase-row-top">
+      <span class="phase-row-name">${ph.phase}${updatedBadge}</span>
+      <span class="phase-row-pct${isUpdated ? ' updated' : ''}">${displayPct}%</span>
+    </div>${buttons}
+  </div>`;
+}
+
+function togglePhase(phaseName) {
+  expandedPhase = expandedPhase === phaseName ? null : phaseName;
+  const prop = allProperties.find(p => p.id === currentPropId);
+  if (prop) {
+    const list = document.getElementById('phase-list');
+    if (list) list.innerHTML = (prop.phases || []).map(ph => renderPhaseRow(ph)).join('');
+  }
+}
+
+function setPhaseProgress(phaseName, pct) {
+  phaseUpdates[phaseName] = pct;
+  expandedPhase = null;
+  const prop = allProperties.find(p => p.id === currentPropId);
+  if (prop) {
+    const list = document.getElementById('phase-list');
+    if (list) list.innerHTML = (prop.phases || []).map(ph => renderPhaseRow(ph)).join('');
+  }
+}
 
 const CATEGORIES = [
   { id: 'kitchen',    label: 'Kitchen',       icon: '🍳', group: 'interior' },
@@ -167,6 +235,8 @@ async function loadProperties() {
 function selectProperty(propId) {
   currentPropId = propId;
   catPhotos = {};
+  phaseUpdates = {};
+  expandedPhase = null;
   document.getElementById('site-notes').value = '';
   document.getElementById('submit-status').textContent = '';
   const existing = document.getElementById('draw-unlock-banner');
@@ -174,6 +244,7 @@ function selectProperty(propId) {
   const prop = allProperties.find(p => p.id === propId);
   if (!prop) return;
   renderProgressBanner(prop);
+  renderPhaseProgress(prop);
   renderCatGrid();
   document.getElementById('cat-section-wrap').style.display = 'block';
   document.getElementById('submit-area').style.display = 'block';
@@ -294,8 +365,9 @@ function removePhoto(catId, uid) {
 async function submitInspection() {
   const totalPhotos = Object.values(catPhotos).reduce((s, a) => s + a.length, 0);
   const siteNotes = document.getElementById('site-notes').value.trim();
-  if (!totalPhotos && !siteNotes) {
-    document.getElementById('submit-status').textContent = 'Add at least one photo or a site note before submitting.';
+  const phaseUpdateCount = Object.keys(phaseUpdates).length;
+  if (!totalPhotos && !siteNotes && !phaseUpdateCount) {
+    document.getElementById('submit-status').textContent = 'Add photos, update a progress field, or add a site note before submitting.';
     return;
   }
 
@@ -306,7 +378,12 @@ async function submitInspection() {
   try {
     const res = await api('/api/inspect/report', {
       method: 'POST',
-      body: JSON.stringify({ prop_id: currentPropId, site_notes: siteNotes, updates: [] }),
+      body: JSON.stringify({
+        prop_id: currentPropId,
+        site_notes: siteNotes,
+        updates: [],
+        phase_updates: Object.entries(phaseUpdates).map(([phase, completion_pct]) => ({ phase, completion_pct })),
+      }),
     });
     if (res.ok) {
       const parts = [];
@@ -326,14 +403,19 @@ async function submitInspection() {
 
       // Reset state
       catPhotos = {};
+      phaseUpdates = {};
+      expandedPhase = null;
       document.getElementById('site-notes').value = '';
       renderCatGrid();
 
-      // Refresh progress banner
+      // Refresh progress banner and phase list
       const data = await api('/api/inspect/properties');
       allProperties = data.properties || [];
       const updated = allProperties.find(p => p.id === currentPropId);
-      if (updated) renderProgressBanner(updated);
+      if (updated) {
+        renderProgressBanner(updated);
+        renderPhaseProgress(updated);
+      }
     } else {
       document.getElementById('submit-status').textContent = 'Error: ' + (res.error || 'Unknown error');
     }

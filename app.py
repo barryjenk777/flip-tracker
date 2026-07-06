@@ -4227,13 +4227,27 @@ def inspect_properties():
     for prop in data.get('properties', []):
         if prop.get('status') == 'closed':
             continue
+        scope_items = prop.get('scope_items', [])
+        phase_map = defaultdict(list)
+        for item in scope_items:
+            phase_map[item.get('phase', 'Other')].append(item)
+        phases = []
+        for phase_name, items in phase_map.items():
+            total_budget = sum(i.get('budget') or 0 for i in items)
+            if total_budget > 0:
+                weighted_pct = sum((i.get('budget') or 0) * (i.get('completion_pct') or 0) for i in items) / total_budget
+            else:
+                weighted_pct = sum(i.get('completion_pct') or 0 for i in items) / len(items)
+            phases.append({'phase': phase_name, 'pct': round(weighted_pct), 'item_count': len(items)})
+
         result.append({
             'id': prop['id'],
             'address': prop.get('address', 'Unknown'),
-            'scope_items': prop.get('scope_items', []),
+            'scope_items': scope_items,
             'project_plan': prop.get('project_plan', {}),
             'metrics': calc_project_metrics(prop),
             'blocking': _compute_scope_blocking(prop),
+            'phases': phases,
         })
     return jsonify({'properties': result})
 
@@ -4307,6 +4321,34 @@ def submit_inspection():
                     'after': item['completion_pct'],
                     'notes': upd.get('notes') or item.get('notes') or '',
                 })
+
+    # Apply phase-level updates: distribute one % across all items in a phase
+    phase_updates = body.get('phase_updates', [])
+    for pu in phase_updates:
+        phase_name = pu.get('phase')
+        pct = pu.get('completion_pct')
+        if phase_name is None or pct is None:
+            continue
+        phase_scope = [i for i in prop.get('scope_items', []) if i.get('phase') == phase_name]
+        if not phase_scope:
+            continue
+        total_budget = sum(i.get('budget') or 0 for i in phase_scope)
+        if total_budget > 0:
+            before_pct = round(sum((i.get('budget') or 0) * (i.get('completion_pct') or 0) for i in phase_scope) / total_budget)
+        else:
+            before_pct = round(sum(i.get('completion_pct') or 0 for i in phase_scope) / len(phase_scope))
+        for item in phase_scope:
+            item['completion_pct'] = int(pct)
+            item['last_updated'] = today
+            item['updated_by'] = 'inspector'
+        updated_count += len(phase_scope)
+        if int(pct) != before_pct:
+            email_changes.append({
+                'name': phase_name,
+                'before': before_pct,
+                'after': int(pct),
+                'notes': 'Phase updated by inspector',
+            })
 
     # Pull pending photos and clear them
     pending_photos = prop.pop('pending_photos', []) or []
