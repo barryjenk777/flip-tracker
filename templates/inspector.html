@@ -74,6 +74,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .scope-item.blocked .pct-btns { pointer-events: none; opacity: 0.35; }
 .scope-item.blocked .notes-input { background: #f9fafb; color: #9ca3af; pointer-events: none; cursor: not-allowed; }
 .scope-item.blocked .photo-btn { pointer-events: none; opacity: 0.35; cursor: not-allowed; }
+.scope-item.item-done { background: #f9fafb; }
+.scope-item.item-done .item-name { color: #9ca3af; text-decoration: line-through; }
+.scope-item.item-done .pct-btn.active { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+.scope-item.item-done .notes-input { display: none; }
+.scope-item.item-done .photo-row { display: none; }
+.section-label { margin: 16px 12px 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; display: flex; align-items: center; gap: 8px; }
+.section-label::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: 0.2; }
+.section-label-active { color: #2563eb; }
+.section-label-notstarted { color: #9ca3af; }
+.section-label-done { color: #16a34a; }
+.phase-section-done { opacity: 0.65; }
+.phase-section-done .phase-header { background: #f0fdf4 !important; }
+.draw-unlock { margin: 10px 12px 0; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; font-size: 14px; font-weight: 700; color: #15803d; text-align: center; }
 
 .session-photo-card { margin: 12px 12px 0; background: white; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; }
 .session-photo-header { padding: 14px 16px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
@@ -183,6 +196,15 @@ function renderProp(prop) {
   const scope = prop.scope_items || [];
   const blocking = prop.blocking || {};
 
+  if (!scope.length) {
+    document.getElementById('main-content').innerHTML =
+      '<div class="empty-state"><p>No scope items loaded for this property.</p><small>Barry can upload the WCP budget or use "Seed from Expenses" in the Projects tab.</small></div>';
+    document.getElementById('submit-area').style.display = 'none';
+    document.getElementById('session-photo-card').style.display = 'none';
+    document.getElementById('submit-status').textContent = '';
+    return;
+  }
+
   // Group by phase
   const phases = {};
   const phaseOrder = [];
@@ -195,75 +217,84 @@ function renderProp(prop) {
   }
   phaseOrder.sort((a, b) => phases[a].order - phases[b].order);
 
-  let html = '';
-
-  // Progress banner
-  if (metrics.has_project) {
-    const pct = metrics.overall_pct || 0;
-    const dayEl = metrics.projected_days ? `${metrics.days_elapsed}/${metrics.projected_days} days` : `${metrics.days_elapsed} days elapsed`;
-    let paceLabel = '', paceClass = 'pace-ok';
-    if (metrics.pace_delta > 5) { paceLabel = `+${metrics.pace_delta}% ahead`; paceClass = 'pace-ahead'; }
-    else if (metrics.pace_delta < -5) { paceLabel = `${metrics.pace_delta}% behind pace`; paceClass = 'pace-behind'; }
-    else { paceLabel = 'On track'; paceClass = 'pace-ok'; }
-
-    html += `<div class="progress-banner">
-      <div class="row">
-        <div><div class="label">Overall Complete</div><div class="val">${pct}%</div></div>
-        <div style="text-align:right">
-          <div class="label">Timeline</div>
-          <div style="font-size:14px;font-weight:700;color:#374151">${dayEl}</div>
-        </div>
-      </div>
-      <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:${pct}%"></div></div>
-      ${paceLabel ? `<div style="margin-top:8px"><span class="pace-chip ${paceClass}">${paceLabel}</span></div>` : ''}
-    </div>`;
+  // Per-phase completion %
+  const phasePcts = {};
+  for (const ph of phaseOrder) {
+    const its = phases[ph].items;
+    const budget = its.reduce((s, i) => s + i.budget, 0);
+    phasePcts[ph] = budget > 0
+      ? Math.round(its.reduce((s, i) => s + i.budget * i.completion_pct / 100, 0) / budget * 100)
+      : Math.round(its.filter(i => i.completion_pct === 100).length / its.length * 100);
   }
 
-  // Phase sections
-  for (const phase of phaseOrder) {
-    const { items } = phases[phase];
-    const phaseDone = items.filter(i => i.completion_pct === 100).length;
-    const phaseTotal = items.length;
-    const phaseBudget = items.reduce((s, i) => s + i.budget, 0);
-    const phasePct = phaseBudget > 0
-      ? Math.round(items.reduce((s, i) => s + i.budget * i.completion_pct / 100, 0) / phaseBudget * 100)
-      : 0;
+  // Bucket into: active (1-99%), not started (0%), done (100%)
+  const activePhs  = phaseOrder.filter(ph => phasePcts[ph] > 0 && phasePcts[ph] < 100);
+  const pendingPhs = phaseOrder.filter(ph => phasePcts[ph] === 0);
+  const donePhs    = phaseOrder.filter(ph => phasePcts[ph] === 100);
+  const remaining  = scope.filter(i => i.completion_pct < 100).length;
+  const overallPct = metrics.overall_pct || 0;
 
-    const phaseId = phase.replace(/[^a-z0-9]/gi, '_');
-
-    html += `<div class="phase-section">
-      <div class="phase-header" onclick="togglePhase('${phaseId}')">
-        <h2>${phase}</h2>
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:11px;color:#9ca3af">${phaseDone}/${phaseTotal}</span>
-          <span class="phase-pct">${phasePct}%</span>
-          <span id="arrow-${phaseId}" style="font-size:12px;color:#9ca3af">▾</span>
-        </div>
+  // Summary banner
+  let html = `<div class="progress-banner">
+    <div class="row">
+      <div><div class="label">Overall Complete</div><div class="val">${overallPct}%</div></div>
+      <div style="text-align:right">
+        <div class="label">${activePhs.length} phase${activePhs.length !== 1 ? 's' : ''} active</div>
+        <div style="font-size:13px;font-weight:600;color:#374151;">${remaining} item${remaining !== 1 ? 's' : ''} remaining</div>
       </div>
-      <div class="phase-items" id="items-${phaseId}">`;
+    </div>
+    <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:${overallPct}%"></div></div>`;
+  if (metrics.has_project && metrics.projected_days) {
+    const over = metrics.days_over || 0;
+    html += `<div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-top:8px;">
+      <span>Day ${metrics.days_elapsed} of ${metrics.projected_days}</span>
+      <span style="color:${over > 0 ? '#dc2626' : '#059669'};font-weight:700;">${over > 0 ? over + ' days over' : (metrics.projected_days - metrics.days_elapsed) + ' days left'}</span>
+    </div>`;
+  }
+  html += '</div>';
 
-    for (const item of items) {
-      const cur = changes[item.id] !== undefined ? changes[item.id] : item;
+  // Render one phase card, open or collapsed, with items sorted: active first, blocked second-to-last, done last
+  function phaseCard(ph, open, dimmed) {
+    const { items } = phases[ph];
+    const pct = phasePcts[ph];
+    const phaseId = ph.replace(/[^a-z0-9]/gi, '_');
+    const doneCount = items.filter(i => i.completion_pct === 100).length;
+    const pctColor = pct === 100 ? '#16a34a' : pct > 0 ? '#2563eb' : '#9ca3af';
+    const icon = pct === 100 ? '✓' : pct > 0 ? '●' : '○';
+    const hdrBg = pct === 100 ? '#f0fdf4' : pct > 0 ? '#eff6ff' : '#f8fafc';
+
+    const sorted = [...items].sort((a, b) => {
+      const aDone = a.completion_pct === 100 ? 2 : 0;
+      const bDone = b.completion_pct === 100 ? 2 : 0;
+      const aBlk = (blocking[a.id] || {}).blocked ? 1 : 0;
+      const bBlk = (blocking[b.id] || {}).blocked ? 1 : 0;
+      return (aDone + aBlk) - (bDone + bBlk);
+    });
+
+    let itemsHtml = '';
+    for (const item of sorted) {
+      const cur = changes[item.id] || {};
       const curPct = cur.completion_pct !== undefined ? cur.completion_pct : item.completion_pct;
       const curNotes = cur.notes !== undefined ? cur.notes : (item.notes || '');
       const photoCount = (item.photos || []).length;
       const block = blocking[item.id] || {};
       const isBlocked = block.blocked || false;
+      const isDoneItem = curPct === 100;
 
-      html += `<div class="scope-item${isBlocked ? ' blocked' : ''}" id="item-${item.id}">
+      itemsHtml += `<div class="scope-item${isBlocked ? ' blocked' : ''}${isDoneItem ? ' item-done' : ''}" id="item-${item.id}">
         <div class="item-top">
           <div class="item-name">${item.name}</div>
-          <div class="item-budget">$${item.budget.toLocaleString()}</div>
+          <div class="item-budget">${item.budget > 0 ? '$' + item.budget.toLocaleString() : ''}</div>
         </div>
-        ${isBlocked
-          ? `<div class="blocked-banner">🔒 ${block.reason || 'Blocked by a prior phase'}</div>`
-          : ''}
+        ${isBlocked ? `<div class="blocked-banner">🔒 ${block.reason || 'Blocked by a prior phase'}</div>` : ''}
         <div class="pct-btns">
           ${[0,25,50,75,100].map(p =>
             `<button class="pct-btn ${curPct === p ? 'active' : ''}" onclick="setPct('${item.id}', ${p}, this)">${p}%</button>`
           ).join('')}
         </div>
-        <textarea class="notes-input" id="notes-${item.id}" placeholder="Notes for this item..." onchange="setNotes('${item.id}', this.value)">${curNotes}</textarea>
+        ${!isDoneItem
+          ? `<textarea class="notes-input" id="notes-${item.id}" placeholder="Notes..." onchange="setNotes('${item.id}', this.value)">${curNotes}</textarea>`
+          : (curNotes ? `<div style="font-size:12px;color:#9ca3af;padding:4px 2px;">${curNotes}</div>` : '')}
         <div class="photo-row">
           <button class="photo-btn" onclick="triggerPhoto('${item.id}')">📷 Add Photo</button>
           <span class="photo-count" id="photo-count-${item.id}">${photoCount > 0 ? photoCount + ' photo' + (photoCount > 1 ? 's' : '') : ''}</span>
@@ -274,13 +305,44 @@ function renderProp(prop) {
       </div>`;
     }
 
-    html += `</div></div>`;
+    return `<div class="phase-section${dimmed ? ' phase-section-done' : ''}">
+      <div class="phase-header" style="background:${hdrBg};" onclick="togglePhase('${phaseId}')">
+        <h2>${icon} ${ph}</h2>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:11px;color:#9ca3af;">${doneCount}/${items.length}</span>
+          <span class="phase-pct" style="color:${pctColor};">${pct}%</span>
+          <span id="arrow-${phaseId}" style="font-size:12px;color:#9ca3af;">${open ? '▾' : '▸'}</span>
+        </div>
+      </div>
+      <div class="phase-items ${open ? '' : 'hidden'}" id="items-${phaseId}">${itemsHtml}</div>
+    </div>`;
   }
 
-  document.getElementById('main-content').innerHTML = html || '<div class="empty-state"><p>No scope items loaded for this property.</p><small>Barry can upload the WCP budget or use "Seed from Expenses" in the Projects tab.</small></div>';
-  document.getElementById('session-photo-card').style.display = 'block';
+  if (activePhs.length) {
+    html += '<div class="section-label section-label-active">In Progress</div>';
+    html += activePhs.map(ph => phaseCard(ph, true, false)).join('');
+  }
+  if (pendingPhs.length) {
+    html += '<div class="section-label section-label-notstarted">Not Started</div>';
+    html += pendingPhs.map(ph => phaseCard(ph, false, false)).join('');
+  }
+  if (donePhs.length) {
+    html += '<div class="section-label section-label-done">Complete</div>';
+    html += donePhs.map(ph => phaseCard(ph, false, true)).join('');
+  }
+
+  document.getElementById('main-content').innerHTML = html;
   document.getElementById('submit-area').style.display = 'block';
+  document.getElementById('session-photo-card').style.display = 'block';
   document.getElementById('submit-status').textContent = '';
+
+  // Scroll to first active phase
+  if (activePhs.length) {
+    setTimeout(() => {
+      const el = document.querySelector('.section-label-active');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
 }
 
 function togglePhase(phaseId) {
@@ -427,9 +489,25 @@ async function submitInspection() {
       body: JSON.stringify({ prop_id: currentPropId, updates }),
     });
     if (res.ok) {
-      const photoNote = res.photos > 0 ? `, ${res.photos} photo${res.photos > 1 ? 's' : ''} sent` : '';
-      document.getElementById('submit-status').textContent =
-        `Inspection submitted. ${res.updated} item${res.updated !== 1 ? 's' : ''} updated${photoNote}. Report emailed to Barry.`;
+      // Build confirmation line
+      const parts = [];
+      if (res.updated > 0) parts.push(`${res.updated} item${res.updated !== 1 ? 's' : ''} updated`);
+      if (res.photos > 0) parts.push(`${res.photos} photo${res.photos > 1 ? 's' : ''} sent`);
+      const statusEl = document.getElementById('submit-status');
+      statusEl.textContent = (parts.length ? parts.join(', ') + '. ' : '') + 'Report emailed to Barry.';
+
+      // Draw unlock callout
+      const main = document.getElementById('main-content');
+      const existing = document.getElementById('draw-unlock-banner');
+      if (existing) existing.remove();
+      if (res.drawable_now > 0) {
+        const banner = document.createElement('div');
+        banner.id = 'draw-unlock-banner';
+        banner.className = 'draw-unlock';
+        banner.textContent = `This inspection unlocked $${res.drawable_now.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})} in draw eligibility`;
+        main.prepend(banner);
+      }
+
       // Reset session state
       changes = {};
       sessionPhotos = [];

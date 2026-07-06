@@ -4141,7 +4141,9 @@ def submit_inspection():
         t = threading.Thread(target=_send_inspection_email, args=(prop, email_changes, pending_photos), daemon=True)
         t.start()
 
-    return jsonify({'ok': True, 'updated': updated_count, 'photos': len(pending_photos)})
+    metrics = calc_project_metrics(prop)
+    return jsonify({'ok': True, 'updated': updated_count, 'photos': len(pending_photos),
+                    'drawable_now': round(metrics.get('drawable_now', 0))})
 
 
 @app.route('/api/flips/<prop_id>/inspections', methods=['GET'])
