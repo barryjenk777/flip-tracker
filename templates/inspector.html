@@ -45,11 +45,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .photo-note-input:focus { outline: none; border-color: #2563eb; background: white; }
 .log-thumb-del { background: none; border: none; color: #c0c4cc; font-size: 18px; cursor: pointer; padding: 4px; flex-shrink: 0; -webkit-tap-highlight-color: transparent; }
 .log-thumb-del:active { color: #ef4444; }
+.log-thumb.tappable { cursor: pointer; }
+
+/* Annotation modal */
+#anno-modal { display: none; position: fixed; inset: 0; background: #000; z-index: 1000; flex-direction: column; align-items: center; justify-content: space-between; }
+.anno-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(0,0,0,0.9); width: 100%; flex-shrink: 0; }
+.anno-btn { padding: 9px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.1); color: white; font-size: 13px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; white-space: nowrap; }
+.anno-btn:active { opacity: 0.7; }
+.anno-btn.active { background: #2563eb; border-color: #2563eb; }
+.anno-spacer { flex: 1; }
+.anno-canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden; }
+#anno-canvas { touch-action: none; max-width: 100%; max-height: 100%; display: block; }
+.anno-bottombar { display: flex; gap: 10px; padding: 12px 16px; background: rgba(0,0,0,0.9); width: 100%; flex-shrink: 0; }
+.anno-cancel { flex: 1; padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.3); background: transparent; color: white; font-size: 15px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.anno-save { flex: 2; padding: 14px; border-radius: 10px; border: none; background: #2563eb; color: white; font-size: 15px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.anno-save:disabled { opacity: 0.5; }
+.anno-hint { color: rgba(255,255,255,0.45); font-size: 11px; align-self: center; }
 
 /* Site notes */
 .notes-section { margin: 16px 12px 0; }
 .notes-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #9ca3af; display: block; margin-bottom: 6px; padding: 0 2px; }
-.site-notes { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 14px; resize: none; height: 72px; background: white; color: #111827; font-family: inherit; }
+.site-notes { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 14px; resize: none; min-height: 72px; height: auto; overflow: hidden; background: white; color: #111827; font-family: inherit; }
 .site-notes:focus { outline: none; border-color: #2563eb; }
 
 /* Submit */
@@ -100,7 +116,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div id="photo-log"></div>
   <div class="notes-section">
     <label class="notes-label">Site Notes</label>
-    <textarea class="site-notes" id="site-notes" placeholder="Any notes about today's visit..."></textarea>
+    <textarea class="site-notes" id="site-notes" placeholder="Any notes about today's visit..." oninput="autoExpand(this)"></textarea>
   </div>
 </div>
 
@@ -111,6 +127,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 <!-- One hidden file input per category, rendered once by JS -->
 <div id="cat-inputs" style="display:none"></div>
+
+<!-- Annotation / markup modal -->
+<div id="anno-modal">
+  <div class="anno-toolbar">
+    <button class="anno-btn active" id="anno-mode-draw" onclick="setAnnoMode('draw')">✏️ Draw</button>
+    <button class="anno-btn" id="anno-mode-circle" onclick="setAnnoMode('circle')">⭕ Circle</button>
+    <div class="anno-spacer"></div>
+    <button class="anno-btn" onclick="annoUndo()">↩ Undo</button>
+    <button class="anno-btn" onclick="annoClear()">Clear</button>
+  </div>
+  <div class="anno-canvas-wrap">
+    <canvas id="anno-canvas"></canvas>
+  </div>
+  <div class="anno-bottombar">
+    <button class="anno-cancel" onclick="closeAnnotation()">Cancel</button>
+    <button class="anno-save" id="anno-save-btn" onclick="saveAnnotation()">Save Markup</button>
+  </div>
+</div>
 
 <script>
 const TOKEN = new URLSearchParams(window.location.search).get('token') || '';
@@ -260,8 +294,9 @@ function renderCatGrid() {
     const currentPct = catProgress.hasOwnProperty(cat.id) ? catProgress[cat.id] : null;
     const thumbs = photos.map(p => {
       const noteVal = (p.note || '').replace(/"/g, '&quot;');
+      const tapAttr = p.uploading ? '' : `onclick="openAnnotation('${cat.id}','${p.uid}')"`;
       return `<div class="photo-log-item" id="lthumb-${p.uid}">
-        <img class="log-thumb${p.uploading ? ' uploading' : ''}" src="${p.preview || p.url}" alt="">
+        <img class="log-thumb${p.uploading ? ' uploading' : ' tappable'}" src="${p.preview || p.url}" alt="" ${tapAttr}>
         <input class="photo-note-input" type="text" placeholder="Add a note..." value="${noteVal}" oninput="updatePhotoNote('${cat.id}','${p.uid}',this.value)">
         <button class="log-thumb-del" onclick="removePhoto('${cat.id}','${p.uid}')">✕</button>
       </div>`;
@@ -316,7 +351,7 @@ async function handleCatPhoto(input, catId) {
 
   // Instant preview — createObjectURL is synchronous, no FileReader wait
   catPhotos[catId] = catPhotos[catId] || [];
-  catPhotos[catId].push({ uid, preview: URL.createObjectURL(file), uploading: true });
+  catPhotos[catId].push({ uid, preview: URL.createObjectURL(file), uploading: true, category: catId });
   renderCatGrid();
 
   // Compress on-device before upload: 1920px max, JPEG 0.82 → ~10-20x smaller than raw iPhone photo
@@ -417,6 +452,210 @@ async function submitInspection() {
 
   btn.disabled = false;
   btn.textContent = 'Submit Inspection';
+}
+
+// ─── Auto-expand textarea ───────────────────────────────────────────
+function autoExpand(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+// ─── Annotation / markup ────────────────────────────────────────────
+var annoTarget = null;
+var annoMode = 'draw';
+var annoStrokes = [];
+var annoCurrentStroke = null;
+var annoDrawing = false;
+var annoImg = null;
+var annoCanvas = null;
+var annoCtx = null;
+
+function openAnnotation(catId, uid) {
+  var item = (catPhotos[catId] || []).find(function(p) { return p.uid === uid; });
+  if (!item || item.uploading) return;
+  var src = item.preview || (item.url ? (item.url.includes('?') ? item.url + '&token=' + TOKEN : item.url + '?token=' + TOKEN) : null);
+  if (!src) return;
+
+  annoTarget = { catId: catId, uid: uid };
+  annoStrokes = [];
+  annoCurrentStroke = null;
+  annoMode = 'draw';
+  document.getElementById('anno-mode-draw').classList.add('active');
+  document.getElementById('anno-mode-circle').classList.remove('active');
+
+  annoCanvas = document.getElementById('anno-canvas');
+  annoCtx = annoCanvas.getContext('2d');
+
+  annoImg = new Image();
+  annoImg.onload = function() {
+    var maxW = window.innerWidth;
+    var maxH = window.innerHeight - 130;
+    var scale = Math.min(1, maxW / annoImg.naturalWidth, maxH / annoImg.naturalHeight);
+    annoCanvas.width = Math.round(annoImg.naturalWidth * scale);
+    annoCanvas.height = Math.round(annoImg.naturalHeight * scale);
+    redrawAnno();
+  };
+  annoImg.src = src;
+
+  document.getElementById('anno-modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeAnnotation() {
+  document.getElementById('anno-modal').style.display = 'none';
+  document.body.style.overflow = '';
+  annoTarget = null;
+  annoStrokes = [];
+  annoCurrentStroke = null;
+}
+
+function setAnnoMode(mode) {
+  annoMode = mode;
+  document.getElementById('anno-mode-draw').classList.toggle('active', mode === 'draw');
+  document.getElementById('anno-mode-circle').classList.toggle('active', mode === 'circle');
+}
+
+function annoUndo() { annoStrokes.pop(); redrawAnno(); }
+function annoClear() { annoStrokes = []; redrawAnno(); }
+
+function redrawAnno() {
+  if (!annoCtx || !annoImg) return;
+  annoCtx.clearRect(0, 0, annoCanvas.width, annoCanvas.height);
+  annoCtx.drawImage(annoImg, 0, 0, annoCanvas.width, annoCanvas.height);
+  annoStrokes.forEach(function(s) { _paintStroke(annoCtx, s); });
+  if (annoCurrentStroke) _paintStroke(annoCtx, annoCurrentStroke);
+}
+
+function _paintStroke(ctx, s) {
+  ctx.save();
+  ctx.strokeStyle = '#FF2222';
+  ctx.lineWidth = s.w || 5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (s.type === 'draw') {
+    if (!s.pts || s.pts.length < 2) { ctx.restore(); return; }
+    ctx.beginPath();
+    ctx.moveTo(s.pts[0].x, s.pts[0].y);
+    for (var i = 1; i < s.pts.length; i++) ctx.lineTo(s.pts[i].x, s.pts[i].y);
+    ctx.stroke();
+  } else if (s.type === 'circle') {
+    if (!s.rx || !s.ry) { ctx.restore(); return; }
+    ctx.beginPath();
+    ctx.ellipse(s.cx, s.cy, Math.max(s.rx, 2), Math.max(s.ry, 2), 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function _annoPos(touch) {
+  var r = annoCanvas.getBoundingClientRect();
+  return {
+    x: (touch.clientX - r.left) * (annoCanvas.width / r.width),
+    y: (touch.clientY - r.top) * (annoCanvas.height / r.height),
+  };
+}
+
+(function() {
+  var c = document.getElementById('anno-canvas');
+  c.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    if (!e.touches.length) return;
+    annoDrawing = true;
+    var pos = _annoPos(e.touches[0]);
+    annoCurrentStroke = annoMode === 'draw'
+      ? { type: 'draw', w: 5, pts: [pos] }
+      : { type: 'circle', w: 5, sx: pos.x, sy: pos.y, cx: pos.x, cy: pos.y, rx: 0, ry: 0 };
+  }, { passive: false });
+
+  c.addEventListener('touchmove', function(e) {
+    if (!annoDrawing || !annoCurrentStroke) return;
+    e.preventDefault();
+    var pos = _annoPos(e.touches[0]);
+    if (annoMode === 'draw') {
+      annoCurrentStroke.pts.push(pos);
+    } else {
+      var dx = pos.x - annoCurrentStroke.sx, dy = pos.y - annoCurrentStroke.sy;
+      annoCurrentStroke.cx = annoCurrentStroke.sx + dx / 2;
+      annoCurrentStroke.cy = annoCurrentStroke.sy + dy / 2;
+      annoCurrentStroke.rx = Math.abs(dx) / 2;
+      annoCurrentStroke.ry = Math.abs(dy) / 2;
+    }
+    redrawAnno();
+  }, { passive: false });
+
+  c.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    annoDrawing = false;
+    if (annoCurrentStroke) { annoStrokes.push(annoCurrentStroke); annoCurrentStroke = null; }
+    redrawAnno();
+  }, { passive: false });
+})();
+
+async function saveAnnotation() {
+  if (!annoTarget) { closeAnnotation(); return; }
+  if (!annoStrokes.length) { closeAnnotation(); return; }
+
+  var btn = document.getElementById('anno-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    var full = document.createElement('canvas');
+    full.width = annoImg.naturalWidth;
+    full.height = annoImg.naturalHeight;
+    var fc = full.getContext('2d');
+    fc.drawImage(annoImg, 0, 0);
+
+    var sx = annoImg.naturalWidth / annoCanvas.width;
+    var sy = annoImg.naturalHeight / annoCanvas.height;
+    var sw = (sx + sy) / 2;
+
+    annoStrokes.forEach(function(s) {
+      var scaled = s.type === 'draw'
+        ? { type: 'draw', w: s.w * sw, pts: s.pts.map(function(p) { return { x: p.x * sx, y: p.y * sy }; }) }
+        : { type: 'circle', w: s.w * sw, cx: s.cx * sx, cy: s.cy * sy, rx: s.rx * sx, ry: s.ry * sy };
+      _paintStroke(fc, scaled);
+    });
+
+    await new Promise(function(resolve) {
+      full.toBlob(async function(blob) {
+        if (!blob) { resolve(); return; }
+        var catId = annoTarget.catId, uid = annoTarget.uid;
+        var item = (catPhotos[catId] || []).find(function(p) { return p.uid === uid; });
+        if (!item) { resolve(); return; }
+
+        if (item.preview && item.preview.startsWith('blob:')) URL.revokeObjectURL(item.preview);
+        item.preview = URL.createObjectURL(blob);
+        item.uploading = true;
+        renderCatGrid();
+
+        var fname = 'anno_' + (item.filename || uid + '.jpg');
+        var fd = new FormData();
+        fd.append('photo', blob, fname);
+        fd.append('category', item.category || catId);
+
+        try {
+          var cat = item.category || catId;
+          var resp = await fetch(
+            '/api/inspect/session-photo/' + currentPropId + '?token=' + TOKEN + '&category=' + encodeURIComponent(cat),
+            { method: 'POST', headers: { 'X-Inspector-Token': TOKEN }, body: fd }
+          );
+          var json = await resp.json();
+          if (json.ok) { item.url = json.url; item.filename = fname; }
+        } catch(e) { /* keep local preview on network error */ }
+
+        item.uploading = false;
+        renderCatGrid();
+        resolve();
+      }, 'image/jpeg', 0.88);
+    });
+  } catch(e) {
+    console.error('saveAnnotation failed', e);
+  }
+
+  closeAnnotation();
+  btn.disabled = false;
+  btn.textContent = 'Save Markup';
 }
 
 loadProperties();
