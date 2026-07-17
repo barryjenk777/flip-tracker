@@ -33,6 +33,7 @@ APP_PASSWORD = os.environ.get('APP_PASSWORD', '')
 POSTMARK_SERVER_TOKEN = os.environ.get('POSTMARK_SERVER_TOKEN', '')
 POSTMARK_FROM_EMAIL   = os.environ.get('POSTMARK_FROM_EMAIL', 'noreply@yourfriendlyagent.net')
 INSPECTION_NOTIFY_EMAIL = os.environ.get('INSPECTION_NOTIFY_EMAIL', 'barry@yourfriendlyagent.net')
+DEAL_NOTIFY_EMAILS = os.environ.get('DEAL_NOTIFY_EMAILS', 'barry@yourfriendlyagent.net,chrisomalley33@gmail.com')
 
 # Inspection photo categories — mirror of inspector.html CATEGORIES array
 INSPECTION_CATEGORIES = [
@@ -4413,6 +4414,290 @@ def upload_inspect_photo(prop_id, item_id):
             })
             save_data(data)
     return jsonify({'ok': True, 'url': photo_url})
+
+
+# ---------------------------------------------------------------------------
+# Deal Submission (agent lead intake)
+# ---------------------------------------------------------------------------
+
+@app.route('/submit-deal')
+def submit_deal_form():
+    return render_template('submit_deal.html')
+
+
+@app.route('/api/deals/submit', methods=['POST'])
+def submit_deal():
+    """Receive a deal submission from an agent, save as lead, email Barry + Chris."""
+    form = request.form
+
+    prop_id = uuid.uuid4().hex[:12]
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    def _num(key, default=0):
+        try:
+            return float((form.get(key) or '').replace(',', '').replace('$', '')) or default
+        except (ValueError, TypeError):
+            return default
+
+    def _yn(key):
+        v = (form.get(key) or '').lower()
+        return True if v == 'yes' else (False if v == 'no' else None)
+
+    comps = []
+    for i in range(1, 4):
+        addr = (form.get(f'comp_{i}_address') or '').strip()
+        if addr:
+            comps.append({
+                'address': addr,
+                'price': _num(f'comp_{i}_price'),
+                'sqft': _num(f'comp_{i}_sqft'),
+                'sold_date': (form.get(f'comp_{i}_date') or '').strip(),
+            })
+
+    prop = {
+        'id': prop_id,
+        'status': 'lead',
+        'address': (form.get('address') or '').strip(),
+        'city': (form.get('city') or '').strip(),
+        'zip': (form.get('zip') or '').strip(),
+        'submitted_at': now_str,
+
+        'submitted_by_name': (form.get('agent_name') or '').strip(),
+        'submitted_by_phone': (form.get('agent_phone') or '').strip(),
+        'submitted_by_email': (form.get('agent_email') or '').strip(),
+
+        'purchase_price': _num('seller_asking'),
+        'seller_asking': _num('seller_asking'),
+        'arv': _num('agent_arv'),
+        'agent_arv': _num('agent_arv'),
+        'agent_repairs': _num('agent_repairs'),
+        'agent_offer': _num('agent_offer'),
+
+        'property_type': (form.get('property_type') or '').strip(),
+        'beds': _num('beds'),
+        'baths': _num('baths'),
+        'sqft': _num('sqft'),
+        'year_built': int(_num('year_built')),
+
+        'seller_motivation': (form.get('seller_motivation') or '').strip(),
+        'close_timeline': (form.get('close_timeline') or '').strip(),
+        'has_mortgage': _yn('has_mortgage'),
+        'mortgage_balance': _num('mortgage_balance'),
+        'liens': _yn('liens'),
+        'creative_terms': _yn('creative_terms'),
+
+        'condition_overall': (form.get('condition_overall') or '').strip(),
+        'condition_roof': (form.get('condition_roof') or '').strip(),
+        'condition_hvac': (form.get('condition_hvac') or '').strip(),
+        'foundation_concerns': _yn('foundation_concerns'),
+        'flood_zone': _yn('flood_zone'),
+        'occupancy': (form.get('occupancy') or '').strip(),
+
+        'comps': comps,
+        'competing_offer': _yn('competing_offer'),
+        'offer_deadline': (form.get('offer_deadline') or '').strip(),
+
+        'confidence': (form.get('confidence') or '').strip(),
+        'notes': (form.get('agent_notes') or '').strip(),
+
+        'expenses': [],
+        'draws': [],
+        'lead_photos': [],
+    }
+
+    # Save photos
+    photos_saved = []
+    lead_dir = os.path.join(PHOTOS_DIR, prop_id, 'lead')
+    os.makedirs(lead_dir, exist_ok=True)
+    for key in sorted(request.files.keys()):
+        f = request.files[key]
+        if not f or not f.filename:
+            continue
+        ext = os.path.splitext(f.filename)[1].lower() or '.jpg'
+        if ext not in ('.jpg', '.jpeg', '.png', '.webp', '.heic'):
+            continue
+        fname = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:6]}{ext}'
+        fpath = os.path.join(lead_dir, fname)
+        f.save(fpath)
+        photos_saved.append({'filename': fname, 'path': fpath})
+
+    prop['lead_photos'] = photos_saved
+
+    data = load_data()
+    data['properties'].append(prop)
+    save_data(data)
+
+    threading.Thread(
+        target=_send_deal_email,
+        args=(prop, photos_saved),
+        daemon=True,
+    ).start()
+
+    return jsonify({'ok': True, 'prop_id': prop_id})
+
+
+def _send_deal_email(prop, photos):
+    if not POSTMARK_SERVER_TOKEN:
+        return
+
+    addr = f"{prop.get('address', '')} {prop.get('city', '')} {prop.get('zip', '')}".strip()
+    agent = prop.get('submitted_by_name') or 'Agent'
+    now = datetime.now().strftime('%B %d, %Y %I:%M %p')
+
+    asking  = prop.get('seller_asking', 0)
+    arv     = prop.get('agent_arv', 0)
+    repairs = prop.get('agent_repairs', 0)
+    offer   = prop.get('agent_offer', 0)
+    spread  = (arv - asking) if asking and arv else 0
+    all_in  = (offer + repairs) if offer and repairs else 0
+    net_est = (arv - all_in) if arv and all_in else 0
+
+    def fmt(n):
+        return f'${n:,.0f}' if n else '—'
+
+    def yn(v):
+        if v is True: return 'Yes'
+        if v is False: return 'No'
+        return '—'
+
+    html = f'''<div style="font-family:Arial,sans-serif;max-width:660px;margin:0 auto;color:#111;">
+<div style="background:#1a2740;padding:20px 24px;border-radius:8px 8px 0 0;">
+  <div style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">New Deal Submission</div>
+  <div style="color:#fff;font-size:22px;font-weight:700;">{addr or "Address not provided"}</div>
+  <div style="color:rgba(255,255,255,0.55);font-size:13px;margin-top:4px;">Submitted by {agent} &nbsp;|&nbsp; {now}</div>
+</div>
+
+<table style="width:100%;border-collapse:collapse;background:#f0f9ff;border:1px solid #bae6fd;">
+<tr>
+  <td style="padding:14px 16px;border-right:1px solid #bae6fd;text-align:center;">
+    <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Seller Asking</div>
+    <div style="font-size:20px;font-weight:800;color:#1a2740;">{fmt(asking)}</div>
+  </td>
+  <td style="padding:14px 16px;border-right:1px solid #bae6fd;text-align:center;">
+    <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Agent ARV</div>
+    <div style="font-size:20px;font-weight:800;color:#1a2740;">{fmt(arv)}</div>
+  </td>
+  <td style="padding:14px 16px;border-right:1px solid #bae6fd;text-align:center;">
+    <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Est. Repairs</div>
+    <div style="font-size:20px;font-weight:800;color:#1a2740;">{fmt(repairs)}</div>
+  </td>
+  <td style="padding:14px 16px;text-align:center;">
+    <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Rec. Offer</div>
+    <div style="font-size:20px;font-weight:800;color:#15803d;">{fmt(offer)}</div>
+  </td>
+</tr>
+</table>
+
+<table style="width:100%;border-collapse:collapse;background:#f9fafb;border:1px solid #e5e7eb;border-top:none;">
+<tr>
+  <td style="padding:10px 16px;border-right:1px solid #e5e7eb;text-align:center;">
+    <div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:2px;">Spread (ARV - Asking)</div>
+    <div style="font-size:16px;font-weight:700;color:{'#15803d' if spread > 0 else '#dc2626'};">{fmt(spread)}</div>
+  </td>
+  <td style="padding:10px 16px;text-align:center;">
+    <div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:2px;">Est. Net (ARV - Offer - Repairs)</div>
+    <div style="font-size:16px;font-weight:700;color:{'#15803d' if net_est > 0 else '#dc2626'};">{fmt(net_est)}</div>
+  </td>
+</tr>
+</table>
+
+<div style="padding:18px 20px;border:1px solid #e5e7eb;border-top:none;">
+<table style="width:100%;border-collapse:collapse;font-size:13px;">
+'''
+
+    def row(label, val):
+        return f'<tr><td style="padding:5px 0;color:#6b7280;font-weight:600;width:45%;">{label}</td><td style="padding:5px 0;color:#111;">{val or "—"}</td></tr>'
+
+    html += '<tr><td colspan="2" style="padding:8px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Property</td></tr>'
+    html += row('Type', prop.get('property_type'))
+    ptype = f"{int(prop.get('beds',0)) or '?'} bed / {prop.get('baths','?')} bath / {int(prop.get('sqft',0)) or '?'} sqft / {int(prop.get('year_built',0)) or '?'} built"
+    html += row('Details', ptype)
+    html += row('Occupancy', prop.get('occupancy'))
+
+    html += '<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Seller Situation</td></tr>'
+    html += row('Why Selling', prop.get('seller_motivation'))
+    html += row('Close Timeline', prop.get('close_timeline'))
+    html += row('Has Mortgage', yn(prop.get('has_mortgage')))
+    if prop.get('mortgage_balance'):
+        html += row('Mortgage Balance', fmt(prop.get('mortgage_balance')))
+    html += row('Liens / Tax Issues', yn(prop.get('liens')))
+    html += row('Open to Creative Terms', yn(prop.get('creative_terms')))
+    html += row('Competing Offer', yn(prop.get('competing_offer')))
+    if prop.get('offer_deadline'):
+        html += row('Offer Deadline', prop.get('offer_deadline'))
+
+    html += '<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Condition</td></tr>'
+    html += row('Overall', prop.get('condition_overall'))
+    html += row('Roof', prop.get('condition_roof'))
+    html += row('HVAC', prop.get('condition_hvac'))
+    html += row('Foundation Concerns', yn(prop.get('foundation_concerns')))
+    html += row('Flood Zone', yn(prop.get('flood_zone')))
+
+    if prop.get('comps'):
+        html += '<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Comps</td></tr>'
+        for c in prop['comps']:
+            detail = ' '.join(filter(None, [fmt(c.get('price')) if c.get('price') else '', f"{int(c.get('sqft',0))} sqft" if c.get('sqft') else '', c.get('sold_date','')]))
+            html += row(c.get('address',''), detail)
+
+    if prop.get('notes'):
+        html += '<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Agent Notes</td></tr>'
+        html += f'<tr><td colspan="2" style="padding:6px 0;color:#374151;font-size:13px;">{prop["notes"]}</td></tr>'
+
+    html += f'<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Agent</td></tr>'
+    html += row('Name', prop.get('submitted_by_name'))
+    html += row('Phone', prop.get('submitted_by_phone'))
+    html += row('Email', prop.get('submitted_by_email'))
+    html += row('Confidence', prop.get('confidence'))
+
+    html += '</table></div>'
+
+    # Attach photos (up to 15, base64 inline)
+    attachments = []
+    for i, ph in enumerate(photos[:15]):
+        try:
+            import base64
+            with open(ph['path'], 'rb') as pf:
+                b64 = base64.b64encode(pf.read()).decode()
+            ext = os.path.splitext(ph['filename'])[1].lower().lstrip('.')
+            mime = 'jpeg' if ext in ('jpg', 'jpeg', 'heic') else ext
+            cid = f'photo{i}'
+            html += f'<img src="cid:{cid}" style="width:100%;max-width:300px;margin:4px;border-radius:6px;" />'
+            attachments.append({
+                'Name': ph['filename'],
+                'Content': b64,
+                'ContentType': f'image/{mime}',
+                'ContentID': f'cid:{cid}',
+            })
+        except Exception:
+            pass
+
+    html += '</div>'
+
+    payload = {
+        'From': POSTMARK_FROM_EMAIL,
+        'To': DEAL_NOTIFY_EMAILS,
+        'Subject': f'New Deal: {addr or "Address TBD"} | {agent}',
+        'HtmlBody': html,
+        'Attachments': attachments,
+        'MessageStream': 'outbound',
+    }
+    try:
+        import urllib.request as urlreq
+        import json as _json
+        req = urlreq.Request(
+            'https://api.postmarkapp.com/email',
+            data=_json.dumps(payload).encode(),
+            headers={
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-Postmark-Server-Token': POSTMARK_SERVER_TOKEN,
+            },
+            method='POST',
+        )
+        urlreq.urlopen(req, timeout=15)
+        print(f'[postmark] deal email sent: {addr}')
+    except Exception as e:
+        print(f'[postmark] deal email failed: {e}')
 
 
 if __name__ == '__main__':

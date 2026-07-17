@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#1a2740">
+<title>Submit a Deal</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #f3f4f6; color: #111827; font-size: 16px; padding-bottom: 40px; }
+
+.header { background: #1a2740; padding: 18px 18px 16px; position: sticky; top: 0; z-index: 100; }
+.header h1 { color: #fff; font-size: 17px; font-weight: 700; }
+.header p { color: rgba(255,255,255,0.55); font-size: 12px; margin-top: 2px; }
+
+.section { background: #fff; margin: 12px 14px 0; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.section-header { background: #1a2740; padding: 10px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,0.8); }
+.section-header.green { background: #15803d; }
+.section-header.blue  { background: #0369a1; }
+.section-header.amber { background: #b45309; }
+
+.field { padding: 13px 16px; border-bottom: 1px solid #f3f4f6; }
+.field:last-child { border-bottom: none; }
+label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; margin-bottom: 5px; }
+input[type=text], input[type=tel], input[type=email], input[type=date], input[type=number], select, textarea {
+  width: 100%; padding: 11px 13px; border: 1.5px solid #e5e7eb; border-radius: 9px;
+  font-size: 16px; font-family: inherit; color: #111827; background: #fafafa;
+  appearance: none; -webkit-appearance: none;
+  transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; background: #fff; }
+textarea { resize: none; min-height: 80px; }
+select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 13px center; padding-right: 36px; }
+
+/* currency input */
+.currency-wrap { position: relative; }
+.currency-wrap::before { content: '$'; position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #6b7280; font-size: 16px; font-weight: 600; pointer-events: none; }
+.currency-wrap input { padding-left: 26px; }
+
+/* two-col */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.two-col .field { border-right: 1px solid #f3f4f6; }
+.two-col .field:nth-child(even) { border-right: none; }
+
+/* numbers highlight */
+.numbers-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.numbers-grid .field { border-right: 1px solid #f0fdf4; }
+.numbers-grid .field:nth-child(even) { border-right: none; }
+.numbers-grid label { color: #15803d; }
+.numbers-grid input { border-color: #d1fae5; background: #f0fdf4; }
+.numbers-grid input:focus { border-color: #15803d; background: #fff; }
+
+/* yn toggle */
+.yn-row { display: flex; gap: 10px; margin-top: 5px; }
+.yn-btn { flex: 1; padding: 10px; border: 1.5px solid #e5e7eb; border-radius: 9px; font-size: 15px; font-weight: 600; color: #6b7280; background: #fafafa; cursor: pointer; text-align: center; transition: all .15s; }
+.yn-btn.selected-yes { border-color: #15803d; background: #f0fdf4; color: #15803d; }
+.yn-btn.selected-no  { border-color: #dc2626; background: #fef2f2; color: #dc2626; }
+
+/* photo upload */
+.photo-area { padding: 14px 16px; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.photo-thumb { aspect-ratio: 1; border-radius: 8px; overflow: hidden; position: relative; background: #f3f4f6; }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-thumb .del { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.add-photo-btn { aspect-ratio: 1; border: 2px dashed #d1d5db; border-radius: 8px; background: #fafafa; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; color: #9ca3af; gap: 4px; }
+.add-photo-btn span { font-size: 11px; font-weight: 600; color: #9ca3af; }
+.photo-count { font-size: 12px; color: #6b7280; margin-top: 6px; }
+#photo-input { display: none; }
+
+/* comp sub-section */
+.comp-block { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin: 0 16px 12px; }
+.comp-block:first-child { margin-top: 12px; }
+.comp-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #6b7280; margin-bottom: 10px; }
+.comp-block input { width: 100%; padding: 9px 12px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 15px; font-family: inherit; color: #111827; background: #fafafa; margin-bottom: 8px; }
+.comp-block input:last-child { margin-bottom: 0; }
+.comp-block input:focus { outline: none; border-color: #2563eb; background: #fff; }
+.comp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.comp-row .currency-wrap::before { line-height: 1; top: 50%; }
+
+/* submit */
+.submit-area { padding: 18px 14px 0; }
+.submit-btn { width: 100%; padding: 18px; background: #15803d; color: #fff; border: none; border-radius: 14px; font-size: 18px; font-weight: 800; cursor: pointer; letter-spacing: .01em; }
+.submit-btn:active { opacity: 0.88; }
+.submit-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+
+/* success screen */
+#success-screen { display: none; position: fixed; inset: 0; background: #fff; z-index: 200; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; }
+.success-icon { font-size: 64px; margin-bottom: 20px; }
+.success-title { font-size: 24px; font-weight: 800; color: #1a2740; margin-bottom: 10px; }
+.success-sub { font-size: 15px; color: #6b7280; line-height: 1.6; }
+.success-new { margin-top: 28px; padding: 16px 28px; background: #1a2740; color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
+
+#upload-progress { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.92); z-index: 300; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+#upload-progress p { font-size: 16px; font-weight: 700; color: #1a2740; }
+#upload-progress .bar-wrap { width: 240px; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
+#upload-progress .bar { height: 100%; background: #15803d; border-radius: 4px; transition: width .2s; width: 0%; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Submit a Deal</h1>
+  <p>Legacy Home Team — Friend in Realty LLC</p>
+</div>
+
+<!-- AGENT INFO -->
+<div class="section">
+  <div class="section-header">Your Info</div>
+  <div class="field"><label>Your Name</label><input type="text" name="agent_name" id="agent_name" placeholder="First Last" autocomplete="name"></div>
+  <div class="two-col">
+    <div class="field"><label>Phone</label><input type="tel" name="agent_phone" id="agent_phone" placeholder="(757) 555-0000" autocomplete="tel"></div>
+    <div class="field"><label>Email</label><input type="email" name="agent_email" id="agent_email" placeholder="you@email.com" autocomplete="email"></div>
+  </div>
+</div>
+
+<!-- PROPERTY -->
+<div class="section">
+  <div class="section-header">Property</div>
+  <div class="field"><label>Street Address</label><input type="text" name="address" id="address" placeholder="123 Main St" autocomplete="street-address"></div>
+  <div class="two-col">
+    <div class="field"><label>City</label><input type="text" name="city" id="city" placeholder="Chesapeake" autocomplete="address-level2"></div>
+    <div class="field"><label>ZIP</label><input type="tel" name="zip" id="zip" placeholder="23320" autocomplete="postal-code"></div>
+  </div>
+  <div class="two-col">
+    <div class="field">
+      <label>Property Type</label>
+      <select name="property_type" id="property_type">
+        <option value="">Select...</option>
+        <option>Single Family</option>
+        <option>Townhome</option>
+        <option>Condo</option>
+        <option>Duplex</option>
+        <option>Multi-Family</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Occupancy</label>
+      <select name="occupancy" id="occupancy">
+        <option value="">Select...</option>
+        <option>Owner-Occupied</option>
+        <option>Tenant</option>
+        <option>Vacant</option>
+      </select>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="field"><label>Beds</label><input type="number" name="beds" id="beds" placeholder="3" min="0" max="20" inputmode="decimal"></div>
+    <div class="field"><label>Baths</label><input type="number" name="baths" id="baths" placeholder="2" min="0" max="20" step="0.5" inputmode="decimal"></div>
+  </div>
+  <div class="two-col">
+    <div class="field"><label>Sq Ft (approx)</label><input type="number" name="sqft" id="sqft" placeholder="1,400" inputmode="decimal"></div>
+    <div class="field"><label>Year Built</label><input type="number" name="year_built" id="year_built" placeholder="1985" inputmode="decimal"></div>
+  </div>
+</div>
+
+<!-- DEAL NUMBERS -->
+<div class="section">
+  <div class="section-header green">The Numbers</div>
+  <div class="numbers-grid">
+    <div class="field"><label>Seller Asking</label><div class="currency-wrap"><input type="tel" name="seller_asking" id="seller_asking" placeholder="200,000" inputmode="decimal"></div></div>
+    <div class="field"><label>Your ARV Estimate</label><div class="currency-wrap"><input type="tel" name="agent_arv" id="agent_arv" placeholder="300,000" inputmode="decimal"></div></div>
+    <div class="field"><label>Est. Repairs</label><div class="currency-wrap"><input type="tel" name="agent_repairs" id="agent_repairs" placeholder="40,000" inputmode="decimal"></div></div>
+    <div class="field"><label>Rec. Offer Price</label><div class="currency-wrap"><input type="tel" name="agent_offer" id="agent_offer" placeholder="185,000" inputmode="decimal"></div></div>
+  </div>
+  <div class="field" id="spread-display" style="display:none;padding:10px 16px;background:#f0fdf4;border-top:1px solid #d1fae5;">
+    <div id="spread-text" style="font-size:13px;font-weight:700;color:#15803d;"></div>
+  </div>
+  <div class="field">
+    <label>Your Confidence</label>
+    <select name="confidence" id="confidence">
+      <option value="">Select...</option>
+      <option>High</option>
+      <option>Medium</option>
+      <option>Low</option>
+    </select>
+  </div>
+</div>
+
+<!-- SELLER SITUATION -->
+<div class="section">
+  <div class="section-header blue">Seller Situation</div>
+  <div class="field">
+    <label>Why Are They Selling?</label>
+    <select name="seller_motivation" id="seller_motivation">
+      <option value="">Select...</option>
+      <option>Pre-Foreclosure / Foreclosure</option>
+      <option>Divorce</option>
+      <option>Inherited Property</option>
+      <option>Military Relocation (PCS)</option>
+      <option>Landlord Exit</option>
+      <option>Downsizing</option>
+      <option>Financial Hardship</option>
+      <option>Estate / Probate</option>
+      <option>Job Relocation</option>
+      <option>Other</option>
+    </select>
+  </div>
+  <div class="field"><label>How Soon Do They Need to Close?</label><input type="text" name="close_timeline" id="close_timeline" placeholder="e.g. 30 days, ASAP, 60-90 days"></div>
+  <div class="field">
+    <label>Is There a Mortgage?</label>
+    <div class="yn-row">
+      <button type="button" class="yn-btn" data-field="has_mortgage" data-val="yes">Yes</button>
+      <button type="button" class="yn-btn" data-field="has_mortgage" data-val="no">No</button>
+    </div>
+    <input type="hidden" name="has_mortgage" id="has_mortgage">
+  </div>
+  <div class="field" id="mortgage-balance-field" style="display:none;">
+    <label>Approx Mortgage Balance</label>
+    <div class="currency-wrap"><input type="tel" name="mortgage_balance" id="mortgage_balance" placeholder="120,000" inputmode="decimal"></div>
+  </div>
+  <div class="field">
+    <label>Any Liens or Tax Issues?</label>
+    <div class="yn-row">
+      <button type="button" class="yn-btn" data-field="liens" data-val="yes">Yes</button>
+      <button type="button" class="yn-btn" data-field="liens" data-val="no">No</button>
+    </div>
+    <input type="hidden" name="liens" id="liens">
+  </div>
+  <div class="field">
+    <label>Open to Creative Terms? (Subject-To, Seller Financing, etc.)</label>
+    <div class="yn-row">
+      <button type="button" class="yn-btn" data-field="creative_terms" data-val="yes">Yes</button>
+      <button type="button" class="yn-btn" data-field="creative_terms" data-val="no">No</button>
+    </div>
+    <input type="hidden" name="creative_terms" id="creative_terms">
+  </div>
+  <div class="field">
+    <label>Competing Offer on the Table?</label>
+    <div class="yn-row">
+      <button type="button" class="yn-btn" data-field="competing_offer" data-val="yes">Yes</button>
+      <button type="button" class="yn-btn" data-field="competing_offer" data-val="no">No</button>
+    </div>
+    <input type="hidden" name="competing_offer" id="competing_offer">
+  </div>
+  <div class="field">
+    <label>Offer Deadline (if any)</label>
+    <input type="date" name="offer_deadline" id="offer_deadline">
+  </div>
+</div>
+
+<!-- CONDITION -->
+<div class="section">
+  <div class="section-header amber">Property Condition</div>
+  <div class="field">
+    <label>Overall Condition</label>
+    <select name="condition_overall" id="condition_overall">
+      <option value="">Select...</option>
+      <option>Cosmetic (paint, carpet, minor fixes)</option>
+      <option>Moderate (kitchens/baths, some systems)</option>
+      <option>Heavy (major systems, structural)</option>
+      <option>Gut (down to the studs)</option>
+    </select>
+  </div>
+  <div class="two-col">
+    <div class="field">
+      <label>Roof</label>
+      <select name="condition_roof" id="condition_roof">
+        <option value="">Select...</option>
+        <option>Good</option>
+        <option>Needs Work</option>
+        <option>Unknown</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>HVAC</label>
+      <select name="condition_hvac" id="condition_hvac">
+        <option value="">Select...</option>
+        <option>Good</option>
+        <option>Needs Work</option>
+        <option>Unknown</option>
+      </select>
+    </div>
+  </div>
+  <div class="field">
+    <label>Foundation Concerns?</label>
+    <div class="yn-row">
+      <button type="button" class="yn-btn" data-field="foundation_concerns" data-val="yes">Yes</button>
+      <button type="button" class="yn-btn" data-field="foundation_concerns" data-val="no">No</button>
+    </div>
+    <input type="hidden" name="foundation_concerns" id="foundation_concerns">
+  </div>
+  <div class="field">
+    <label>Flood Zone?</label>
+    <div class="yn-row">
+      <button type="button" class="yn-btn" data-field="flood_zone" data-val="yes">Yes</button>
+      <button type="button" class="yn-btn" data-field="flood_zone" data-val="no">No</button>
+    </div>
+    <input type="hidden" name="flood_zone" id="flood_zone">
+  </div>
+</div>
+
+<!-- COMPS -->
+<div class="section">
+  <div class="section-header">Comparable Sales (up to 3)</div>
+  <div class="comp-block">
+    <div class="comp-label">Comp 1</div>
+    <input type="text" name="comp_1_address" placeholder="Address">
+    <div class="comp-row">
+      <div class="currency-wrap"><input type="tel" name="comp_1_price" placeholder="Sale Price" inputmode="decimal"></div>
+      <input type="tel" name="comp_1_sqft" placeholder="Sq Ft">
+    </div>
+    <input type="date" name="comp_1_date">
+  </div>
+  <div class="comp-block">
+    <div class="comp-label">Comp 2</div>
+    <input type="text" name="comp_2_address" placeholder="Address">
+    <div class="comp-row">
+      <div class="currency-wrap"><input type="tel" name="comp_2_price" placeholder="Sale Price" inputmode="decimal"></div>
+      <input type="tel" name="comp_2_sqft" placeholder="Sq Ft">
+    </div>
+    <input type="date" name="comp_2_date">
+  </div>
+  <div class="comp-block">
+    <div class="comp-label">Comp 3</div>
+    <input type="text" name="comp_3_address" placeholder="Address">
+    <div class="comp-row">
+      <div class="currency-wrap"><input type="tel" name="comp_3_price" placeholder="Sale Price" inputmode="decimal"></div>
+      <input type="tel" name="comp_3_sqft" placeholder="Sq Ft">
+    </div>
+    <input type="date" name="comp_3_date">
+  </div>
+</div>
+
+<!-- AGENT NOTES -->
+<div class="section">
+  <div class="section-header">Agent Notes</div>
+  <div class="field"><label>Anything else Barry and Chris should know?</label><textarea name="agent_notes" id="agent_notes" placeholder="Seller is motivated, needs to move quickly. Back bedroom has water damage. Already have another investor looking at it..." oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+</div>
+
+<!-- PHOTOS -->
+<div class="section">
+  <div class="section-header">Photos</div>
+  <div class="photo-area">
+    <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">Tap to add photos. They'll be compressed automatically before uploading.</div>
+    <input type="file" id="photo-input" accept="image/*" multiple capture="environment">
+    <div class="photo-grid" id="photo-grid">
+      <div class="add-photo-btn" id="add-photo-btn" onclick="document.getElementById('photo-input').click()">
+        <span>📷</span><span>Add Photos</span>
+      </div>
+    </div>
+    <div class="photo-count" id="photo-count"></div>
+  </div>
+</div>
+
+<div class="submit-area">
+  <button type="button" class="submit-btn" id="submit-btn" onclick="submitDeal()">Submit Deal to Barry &amp; Chris</button>
+</div>
+
+<!-- SUCCESS -->
+<div id="success-screen">
+  <div class="success-icon">✅</div>
+  <div class="success-title">Deal Submitted!</div>
+  <div class="success-sub">Barry and Chris have been notified.<br>The deal is in the tracker as a lead.</div>
+  <button class="success-new" onclick="location.reload()">Submit Another Deal</button>
+</div>
+
+<!-- PROGRESS -->
+<div id="upload-progress">
+  <p id="progress-label">Compressing photos...</p>
+  <div class="bar-wrap"><div class="bar" id="progress-bar"></div></div>
+</div>
+
+<script>
+// ---- Y/N toggles ----
+document.querySelectorAll('.yn-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var field = this.dataset.field;
+    var val = this.dataset.val;
+    document.querySelectorAll('.yn-btn[data-field="' + field + '"]').forEach(function(b) {
+      b.classList.remove('selected-yes', 'selected-no');
+    });
+    this.classList.add(val === 'yes' ? 'selected-yes' : 'selected-no');
+    document.getElementById(field).value = val;
+    if (field === 'has_mortgage') {
+      document.getElementById('mortgage-balance-field').style.display = val === 'yes' ? 'block' : 'none';
+    }
+  });
+});
+
+// ---- Spread preview ----
+function updateSpread() {
+  var asking = parseMoney(document.getElementById('seller_asking').value);
+  var arv = parseMoney(document.getElementById('agent_arv').value);
+  var repairs = parseMoney(document.getElementById('agent_repairs').value);
+  var offer = parseMoney(document.getElementById('agent_offer').value);
+  var display = document.getElementById('spread-display');
+  var text = document.getElementById('spread-text');
+  if (!asking && !arv) { display.style.display = 'none'; return; }
+  display.style.display = 'block';
+  var parts = [];
+  if (arv && asking) parts.push('Spread: ' + fmt(arv - asking));
+  if (arv && offer && repairs) parts.push('Est. Net: ' + fmt(arv - offer - repairs));
+  text.textContent = parts.join('  |  ');
+}
+['seller_asking','agent_arv','agent_repairs','agent_offer'].forEach(function(id) {
+  document.getElementById(id).addEventListener('input', updateSpread);
+});
+function parseMoney(s) {
+  var n = parseFloat((s || '').replace(/[$,]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+function fmt(n) {
+  return '$' + Math.round(n).toLocaleString();
+}
+
+// ---- Photos ----
+var photoFiles = [];
+var MAX_PHOTOS = 20;
+var MAX_DIM = 1600;
+var JPEG_QUALITY = 0.75;
+
+document.getElementById('photo-input').addEventListener('change', function(e) {
+  var files = Array.from(e.target.files || []);
+  var remaining = MAX_PHOTOS - photoFiles.length;
+  files.slice(0, remaining).forEach(function(file) {
+    photoFiles.push(file);
+  });
+  e.target.value = '';
+  renderPhotoGrid();
+});
+
+function renderPhotoGrid() {
+  var grid = document.getElementById('photo-grid');
+  grid.innerHTML = '';
+  photoFiles.forEach(function(file, idx) {
+    var url = URL.createObjectURL(file);
+    var div = document.createElement('div');
+    div.className = 'photo-thumb';
+    var img = document.createElement('img');
+    img.src = url;
+    img.onload = function() { URL.revokeObjectURL(url); };
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '×';
+    del.onclick = function() { photoFiles.splice(idx, 1); renderPhotoGrid(); };
+    div.appendChild(img);
+    div.appendChild(del);
+    grid.appendChild(div);
+  });
+  if (photoFiles.length < MAX_PHOTOS) {
+    var add = document.createElement('div');
+    add.className = 'add-photo-btn';
+    add.innerHTML = '<span>📷</span><span>Add</span>';
+    add.onclick = function() { document.getElementById('photo-input').click(); };
+    grid.appendChild(add);
+  }
+  var count = document.getElementById('photo-count');
+  count.textContent = photoFiles.length > 0 ? photoFiles.length + ' photo' + (photoFiles.length !== 1 ? 's' : '') + ' added' : '';
+}
+
+function compressImage(file) {
+  return new Promise(function(resolve) {
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function() {
+      URL.revokeObjectURL(url);
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        var scale = Math.min(MAX_DIM / w, MAX_DIM / h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function(blob) {
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', JPEG_QUALITY);
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+// ---- Submit ----
+async function submitDeal() {
+  var btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  var progress = document.getElementById('upload-progress');
+  var progressLabel = document.getElementById('progress-label');
+  var progressBar = document.getElementById('progress-bar');
+  progress.style.display = 'flex';
+
+  var fd = new FormData();
+  var fields = ['agent_name','agent_phone','agent_email','address','city','zip',
+    'property_type','occupancy','beds','baths','sqft','year_built',
+    'seller_asking','agent_arv','agent_repairs','agent_offer','confidence',
+    'seller_motivation','close_timeline','has_mortgage','mortgage_balance',
+    'liens','creative_terms','competing_offer','offer_deadline',
+    'condition_overall','condition_roof','condition_hvac','foundation_concerns','flood_zone',
+    'agent_notes',
+    'comp_1_address','comp_1_price','comp_1_sqft','comp_1_date',
+    'comp_2_address','comp_2_price','comp_2_sqft','comp_2_date',
+    'comp_3_address','comp_3_price','comp_3_sqft','comp_3_date'];
+
+  fields.forEach(function(name) {
+    var el = document.getElementById(name) || document.querySelector('[name="' + name + '"]');
+    if (el) fd.append(name, el.value || '');
+  });
+
+  // Compress + attach photos
+  for (var i = 0; i < photoFiles.length; i++) {
+    progressLabel.textContent = 'Compressing photo ' + (i + 1) + ' of ' + photoFiles.length + '...';
+    progressBar.style.width = Math.round((i / (photoFiles.length + 1)) * 80) + '%';
+    var compressed = await compressImage(photoFiles[i]);
+    fd.append('photo_' + i, compressed, compressed.name);
+  }
+
+  progressLabel.textContent = 'Sending to Barry and Chris...';
+  progressBar.style.width = '90%';
+
+  try {
+    var res = await fetch('/api/deals/submit', { method: 'POST', body: fd });
+    var json = await res.json();
+    if (json.ok) {
+      progressBar.style.width = '100%';
+      setTimeout(function() {
+        progress.style.display = 'none';
+        document.getElementById('success-screen').style.display = 'flex';
+      }, 400);
+    } else {
+      throw new Error(json.error || 'Unknown error');
+    }
+  } catch (err) {
+    progress.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = 'Submit Deal to Barry & Chris';
+    alert('Something went wrong. Please try again.\n' + err.message);
+  }
+}
+</script>
+</body>
+</html>
