@@ -333,7 +333,11 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 <div class="section">
   <div class="section-header">Photos</div>
   <div class="photo-area">
-    <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">Tap to add photos. They'll be compressed automatically before uploading.</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">Tap to add up to 20 photos. They'll be compressed automatically before uploading.</div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:5px;">More than 20 photos? Paste a Google Drive link</label>
+      <input type="url" name="photo_drive_link" id="photo_drive_link" placeholder="https://drive.google.com/drive/folders/..." style="width:100%;padding:11px 13px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:15px;font-family:inherit;color:#111827;background:#fafafa;" inputmode="url">
+    </div>
     <input type="file" id="photo-input" accept="image/*" multiple capture="environment">
     <div class="photo-grid" id="photo-grid">
       <div class="add-photo-btn" id="add-photo-btn" onclick="document.getElementById('photo-input').click()">
@@ -488,7 +492,7 @@ async function submitDeal() {
   var fd = new FormData();
   var fields = ['agent_name','agent_phone','agent_email','address','city','zip',
     'property_type','occupancy','beds','baths','sqft','year_built',
-    'seller_asking','agent_arv','agent_repairs','agent_offer','tax_assessment','confidence',
+    'seller_asking','agent_arv','agent_repairs','agent_offer','tax_assessment','confidence','photo_drive_link',
     'seller_motivation','close_timeline','has_mortgage','mortgage_balance',
     'liens','creative_terms','competing_offer','offer_deadline',
     'condition_overall','condition_roof','condition_hvac','foundation_concerns','flood_zone',

@@ -4500,6 +4500,7 @@ def submit_deal():
 
         'confidence': (form.get('confidence') or '').strip(),
         'notes': (form.get('agent_notes') or '').strip(),
+        'photo_drive_link': (form.get('photo_drive_link') or '').strip(),
 
         'expenses': [],
         'draws': [],
@@ -4648,6 +4649,11 @@ def _send_deal_email(prop, photos):
     if prop.get('notes'):
         html += '<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Agent Notes</td></tr>'
         html += f'<tr><td colspan="2" style="padding:6px 0;color:#374151;font-size:13px;">{prop["notes"]}</td></tr>'
+
+    if prop.get('photo_drive_link'):
+        html += '<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Additional Photos</td></tr>'
+        link = prop['photo_drive_link']
+        html += f'<tr><td colspan="2" style="padding:6px 0;"><a href="{link}" style="color:#2563eb;font-size:13px;">Google Drive Folder</a></td></tr>'
 
     html += f'<tr><td colspan="2" style="padding:12px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0369a1;border-bottom:1px solid #e5e7eb;">Agent</td></tr>'
     html += row('Name', prop.get('submitted_by_name'))
