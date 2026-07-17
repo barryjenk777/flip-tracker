@@ -4472,6 +4472,7 @@ def submit_deal():
         'agent_arv': _num('agent_arv'),
         'agent_repairs': _num('agent_repairs'),
         'agent_offer': _num('agent_offer'),
+        'tax_assessment': _num('tax_assessment'),
 
         'property_type': (form.get('property_type') or '').strip(),
         'beds': _num('beds'),
@@ -4548,6 +4549,7 @@ def _send_deal_email(prop, photos):
     arv     = prop.get('agent_arv', 0)
     repairs = prop.get('agent_repairs', 0)
     offer   = prop.get('agent_offer', 0)
+    tax_ass = prop.get('tax_assessment', 0)
     spread  = (arv - asking) if asking and arv else 0
     all_in  = (offer + repairs) if offer and repairs else 0
     net_est = (arv - all_in) if arv and all_in else 0
@@ -4594,9 +4596,13 @@ def _send_deal_email(prop, photos):
     <div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:2px;">Spread (ARV - Asking)</div>
     <div style="font-size:16px;font-weight:700;color:{'#15803d' if spread > 0 else '#dc2626'};">{fmt(spread)}</div>
   </td>
-  <td style="padding:10px 16px;text-align:center;">
+  <td style="padding:10px 16px;border-right:1px solid #e5e7eb;text-align:center;">
     <div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:2px;">Est. Net (ARV - Offer - Repairs)</div>
     <div style="font-size:16px;font-weight:700;color:{'#15803d' if net_est > 0 else '#dc2626'};">{fmt(net_est)}</div>
+  </td>
+  <td style="padding:10px 16px;text-align:center;">
+    <div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:2px;">Tax Assessment</div>
+    <div style="font-size:16px;font-weight:700;color:#1a2740;">{fmt(tax_ass)}</div>
   </td>
 </tr>
 </table>
