@@ -4527,6 +4527,54 @@ def submit_deal():
 
     data = load_data()
     data['properties'].append(prop)
+
+    # Also create a prospect in the deal analyzer pipeline
+    slug = (prop.get('address', 'deal') or 'deal').lower().replace(' ', '-')[:30]
+    prospect = {
+        'id': slug + '-' + prop_id,
+        'lead_id': prop_id,
+        'address': prop.get('address', ''),
+        'city': prop.get('city', ''),
+        'state': 'VA',
+        'beds': prop.get('beds', 0),
+        'baths': prop.get('baths', 0),
+        'sqft': prop.get('sqft', 0),
+        'year_built': prop.get('year_built', 0),
+        'asking_price': prop.get('seller_asking', 0),
+        'arv': prop.get('agent_arv', 0),
+        'estimated_rehab': prop.get('agent_repairs', 0),
+        'tax_assessment': prop.get('tax_assessment', 0),
+        'source': 'Agent Submission',
+        'stage': 'new_lead',
+        'date_added': now_str[:10],
+        'last_analyzed': now_str,
+        'notes': prop.get('notes', ''),
+        'stage_history': [{'stage': 'new_lead', 'date': now_str}],
+        # Extra agent-submitted fields stored for the "More" panel
+        'agent_submitted_by': prop.get('submitted_by_name', ''),
+        'agent_submitted_phone': prop.get('submitted_by_phone', ''),
+        'agent_submitted_email': prop.get('submitted_by_email', ''),
+        'agent_confidence': prop.get('confidence', ''),
+        'seller_motivation': prop.get('seller_motivation', ''),
+        'close_timeline': prop.get('close_timeline', ''),
+        'has_mortgage': prop.get('has_mortgage'),
+        'mortgage_balance': prop.get('mortgage_balance', 0),
+        'liens': prop.get('liens'),
+        'creative_terms': prop.get('creative_terms'),
+        'competing_offer': prop.get('competing_offer'),
+        'offer_deadline': prop.get('offer_deadline', ''),
+        'occupancy': prop.get('occupancy', ''),
+        'property_type': prop.get('property_type', ''),
+        'condition_overall': prop.get('condition_overall', ''),
+        'condition_roof': prop.get('condition_roof', ''),
+        'condition_hvac': prop.get('condition_hvac', ''),
+        'foundation_concerns': prop.get('foundation_concerns'),
+        'flood_zone': prop.get('flood_zone'),
+        'agent_comps': prop.get('comps', []),
+        'photo_drive_link': prop.get('photo_drive_link', ''),
+    }
+    data.setdefault('prospects', []).append(prospect)
+
     save_data(data)
 
     threading.Thread(

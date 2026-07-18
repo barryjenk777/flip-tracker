@@ -4768,8 +4768,86 @@ function renderProspectResults(p) {
         <div style="margin-top:12px;display:flex;gap:8px;align-items:start;">
             <div class="form-group" style="flex:1;"><label>Notes</label><textarea id="prospect-notes-${p.id}" rows="2" style="width:100%;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text-primary);font-size:13px;resize:vertical;" onblur="updateProspectNotes('${p.id}',this.value)">${p.notes||''}</textarea></div>
         </div>
+
+        ${buildAgentMorePanel(p)}
     `;
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function buildAgentMorePanel(p) {
+    if (!p.lead_id && !p.seller_motivation && !p.condition_overall && !p.agent_submitted_by) return '';
+    const yn = v => v === true ? 'Yes' : v === false ? 'No' : '';
+    const row = (label, val) => val ? `<div class="metric-row"><span class="ml" style="color:var(--text-muted)">${label}</span><span class="mv">${val}</span></div>` : '';
+    const fmtD = n => n ? '$' + Number(n).toLocaleString('en-US', {maximumFractionDigits:0}) : '';
+    const sectionHead = label => `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:4px;margin:14px 0 8px;">${label}</div>`;
+
+    let body = '';
+
+    if (p.agent_submitted_by || p.agent_submitted_phone || p.agent_submitted_email || p.agent_confidence) {
+        body += sectionHead('Agent');
+        body += row('Submitted By', p.agent_submitted_by);
+        body += row('Phone', p.agent_submitted_phone);
+        body += row('Email', p.agent_submitted_email);
+        body += row('Confidence', p.agent_confidence);
+    }
+
+    const hasSeller = p.seller_motivation || p.close_timeline || p.has_mortgage != null || p.liens != null || p.creative_terms != null || p.competing_offer != null || p.offer_deadline || p.occupancy;
+    if (hasSeller) {
+        body += sectionHead('Seller Situation');
+        body += row('Why Selling', p.seller_motivation);
+        body += row('Close Timeline', p.close_timeline);
+        body += row('Occupancy', p.occupancy);
+        if (p.has_mortgage != null) body += row('Has Mortgage', yn(p.has_mortgage));
+        if (p.mortgage_balance) body += row('Mortgage Balance', fmtD(p.mortgage_balance));
+        if (p.liens != null) body += row('Liens / Tax Issues', yn(p.liens));
+        if (p.creative_terms != null) body += row('Open to Creative Terms', yn(p.creative_terms));
+        if (p.competing_offer != null) body += row('Competing Offer', yn(p.competing_offer));
+        body += row('Offer Deadline', p.offer_deadline);
+    }
+
+    const hasCond = p.condition_overall || p.condition_roof || p.condition_hvac || p.foundation_concerns != null || p.flood_zone != null || p.property_type;
+    if (hasCond) {
+        body += sectionHead('Property Condition');
+        body += row('Type', p.property_type);
+        body += row('Overall', p.condition_overall);
+        body += row('Roof', p.condition_roof);
+        body += row('HVAC', p.condition_hvac);
+        if (p.foundation_concerns != null) body += row('Foundation Concerns', yn(p.foundation_concerns));
+        if (p.flood_zone != null) body += row('Flood Zone', yn(p.flood_zone));
+    }
+
+    if (p.tax_assessment) {
+        body += sectionHead('Additional Numbers');
+        body += row('Tax Assessment', fmtD(p.tax_assessment));
+    }
+
+    const comps = p.agent_comps || [];
+    if (comps.length) {
+        body += sectionHead('Agent Comps');
+        comps.forEach(c => {
+            const detail = [c.price ? fmtD(c.price) : '', c.sqft ? c.sqft + ' sqft' : '', c.sold_date || ''].filter(Boolean).join(' · ');
+            body += row(c.address || 'Comp', detail);
+        });
+    }
+
+    if (p.photo_drive_link) {
+        body += sectionHead('Additional Photos');
+        body += `<div style="padding:4px 0;"><a href="${p.photo_drive_link}" target="_blank" style="color:var(--accent);font-size:13px;">Google Drive Folder &#8599;</a></div>`;
+    }
+
+    if (!body) return '';
+
+    return `
+    <div style="margin-top:12px;">
+        <button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.textContent.includes('Show')?'Hide Agent Details ▴':'Show Agent Details ▾';"
+            style="width:100%;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;text-align:left;">
+            Show Agent Details &#9660;
+        </button>
+        <div style="display:none;background:var(--bg-primary);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:12px 16px;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Submitted by agent via deal form</div>
+            ${body}
+        </div>
+    </div>`;
 }
 
 // ---- Optimistic stage update (no reload wait) ----
