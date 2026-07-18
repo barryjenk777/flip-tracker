@@ -1122,7 +1122,10 @@
             <div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                     <div class="card-title" style="margin-bottom:0;">All Expenses</div>
-                    <button class="btn btn-primary btn-sm" onclick="showAddExpense()">+ Add Expense</button>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-secondary btn-sm" onclick="exportExpensesCSV()">Export CSV</button>
+                        <button class="btn btn-primary btn-sm" onclick="showAddExpense()">+ Add Expense</button>
+                    </div>
                 </div>
                 <table class="data-table" id="expense-table">
                     <thead>
@@ -2109,6 +2112,39 @@ async function deleteProperty() {
     hideModal('modal-edit-property');
     await loadFlips();
     switchTab('portfolio');
+}
+
+function exportExpensesCSV() {
+    const prop = getSelected();
+    if (!prop) return;
+    const expenses = prop.expenses || [];
+    if (!expenses.length) { alert('No expenses to export.'); return; }
+    const HOLDING_CATS = new Set(['Utilities']);
+    const SELLING_CATS = new Set(['Marketing', 'Staging']);
+    function expType(e) {
+        if (HOLDING_CATS.has(e.category)) return 'Holding';
+        if (SELLING_CATS.has(e.category)) return 'Selling';
+        return 'Renovation';
+    }
+    function esc(v) { return '"' + String(v || '').replace(/"/g, '""') + '"'; }
+    const rows = [['Date','Vendor','Description','Category','Type','Amount','Refund']];
+    expenses.forEach(e => {
+        rows.push([
+            esc(e.date || ''),
+            esc(e.vendor || ''),
+            esc(e.description || ''),
+            esc(e.category || ''),
+            esc(expType(e)),
+            e.is_credit ? '' : (e.amount || 0).toFixed(2),
+            e.is_credit ? (e.amount || 0).toFixed(2) : '',
+        ]);
+    });
+    const csv = rows.map(r => r.join(',')).join('\r\n');
+    const addr = (prop.address || 'expenses').replace(/[^a-z0-9]/gi, '_');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = addr + '_expenses.csv';
+    a.click();
 }
 
 async function deleteExpense(idx) {
